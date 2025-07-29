@@ -31,8 +31,9 @@ import (
 const (
 	tabHeight    = 24
 	bottomHeight = 24
-	toolbarWidth = 48
 )
+
+var toolbarWidth = 48
 
 type Tool int
 
@@ -325,6 +326,13 @@ func main() {
 		draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
 	}
 
+	// ensure the toolbar is wide enough for the program title
+	d := &font.Drawer{Face: basicfont.Face7x13}
+	titleWidth := d.MeasureString("ShineyShot").Ceil() + 8 // padding
+	if titleWidth > toolbarWidth {
+		toolbarWidth = titleWidth
+	}
+
 	driver.Main(func(s screen.Screen) {
 		width := rgba.Bounds().Dx() + toolbarWidth
 		height := rgba.Bounds().Dy() + tabHeight + bottomHeight
@@ -399,7 +407,7 @@ func main() {
 				w.Publish()
 			case mouse.Event:
 				if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress && int(e.Y) < tabHeight {
-					idx := int((e.X - toolbarWidth)) / 80
+					idx := (int(e.X) - toolbarWidth) / 80
 					if idx >= 0 && idx < len(tabs) {
 						current = idx
 						w.Send(paint.Event{})
