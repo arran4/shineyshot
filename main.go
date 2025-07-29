@@ -132,7 +132,8 @@ func drawShortcuts(dst *image.RGBA, width, height int) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 
-	shortcuts := []string{"N:new", "+/-:zoom", "D:delete", "C:copy", "S:save", "Q:quit"}
+	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", zoom*100)
+	shortcuts := []string{"N:new", zoomStr, "D:delete", "C:copy", "S:save", "Q:quit"}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
 	for _, sc := range shortcuts {
