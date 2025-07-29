@@ -54,6 +54,23 @@ type Tab struct {
 	Offset image.Point
 }
 
+const handleSize = 8
+
+type cropAction int
+
+const (
+	cropNone cropAction = iota
+	cropMove
+	cropResizeTL
+	cropResizeT
+	cropResizeTR
+	cropResizeR
+	cropResizeBR
+	cropResizeB
+	cropResizeBL
+	cropResizeL
+)
+
 var palette = []color.RGBA{
 	{0, 0, 0, 255},       // black
 	{255, 255, 255, 255}, // white
@@ -133,12 +150,14 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
-
-	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", zoom*100)
+  zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", zoom*100)
 	shortcuts := []string{"N:new", zoomStr, "D:delete", "C:copy", "S:save", "Q:quit"}
+	if tool == ToolCrop {
+		shortcuts = append(shortcuts, "Enter:crop", "Ctrl+Enter:new tab", "Esc:cancel")
+	}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
 	for _, sc := range shortcuts {
@@ -317,6 +336,89 @@ func drawNumberBox(img *image.RGBA, x, y, num int, col color.Color) {
 	d.DrawString(text)
 }
 
+func drawDashedLine(img *image.RGBA, x0, y0, x1, y1, dash, thickness int, c1, c2 color.Color) {
+	horiz := y0 == y1
+	length := x1 - x0
+	if !horiz {
+		length = y1 - y0
+	}
+	if length < 0 {
+		length = -length
+	}
+	for i := 0; i <= length; i += dash * 2 {
+		for j := 0; j < dash && i+j <= length; j++ {
+			col := c1
+			if horiz {
+				for t := 0; t < thickness; t++ {
+					if x0 < x1 {
+						img.Set(x0+i+j, y0+t, col)
+					} else {
+						img.Set(x0-i-j, y0+t, col)
+					}
+				}
+			} else {
+				for t := 0; t < thickness; t++ {
+					if y0 < y1 {
+						img.Set(x0+t, y0+i+j, col)
+					} else {
+						img.Set(x0+t, y0-i-j, col)
+					}
+				}
+			}
+		}
+		for j := 0; j < dash && i+dash+j <= length; j++ {
+			col := c2
+			if horiz {
+				for t := 0; t < thickness; t++ {
+					if x0 < x1 {
+						img.Set(x0+i+dash+j, y0+t, col)
+					} else {
+						img.Set(x0-i-dash-j, y0+t, col)
+					}
+				}
+			} else {
+				for t := 0; t < thickness; t++ {
+					if y0 < y1 {
+						img.Set(x0+t, y0+i+dash+j, col)
+					} else {
+						img.Set(x0+t, y0-i-dash-j, col)
+					}
+				}
+			}
+		}
+	}
+}
+
+func drawDashedRect(img *image.RGBA, rect image.Rectangle, dash, thickness int, c1, c2 color.Color) {
+	drawDashedLine(img, rect.Min.X, rect.Min.Y, rect.Max.X, rect.Min.Y, dash, thickness, c1, c2)
+	drawDashedLine(img, rect.Max.X, rect.Min.Y, rect.Max.X, rect.Max.Y, dash, thickness, c1, c2)
+	drawDashedLine(img, rect.Max.X, rect.Max.Y, rect.Min.X, rect.Max.Y, dash, thickness, c1, c2)
+	drawDashedLine(img, rect.Min.X, rect.Max.Y, rect.Min.X, rect.Min.Y, dash, thickness, c1, c2)
+}
+
+func drawRect(img *image.RGBA, rect image.Rectangle, col color.Color) {
+	drawLine(img, rect.Min.X, rect.Min.Y, rect.Max.X-1, rect.Min.Y, col)
+	drawLine(img, rect.Max.X-1, rect.Min.Y, rect.Max.X-1, rect.Max.Y-1, col)
+	drawLine(img, rect.Max.X-1, rect.Max.Y-1, rect.Min.X, rect.Max.Y-1, col)
+	drawLine(img, rect.Min.X, rect.Max.Y-1, rect.Min.X, rect.Min.Y, col)
+}
+
+func cropHandleRects(rect image.Rectangle) []image.Rectangle {
+	hs := handleSize / 2
+	cx := (rect.Min.X + rect.Max.X) / 2
+	cy := (rect.Min.Y + rect.Max.Y) / 2
+	return []image.Rectangle{
+		image.Rect(rect.Min.X-hs, rect.Min.Y-hs, rect.Min.X+hs, rect.Min.Y+hs), // tl
+		image.Rect(cx-hs, rect.Min.Y-hs, cx+hs, rect.Min.Y+hs),                 // t
+		image.Rect(rect.Max.X-hs, rect.Min.Y-hs, rect.Max.X+hs, rect.Min.Y+hs), // tr
+		image.Rect(rect.Max.X-hs, cy-hs, rect.Max.X+hs, cy+hs),                 // r
+		image.Rect(rect.Max.X-hs, rect.Max.Y-hs, rect.Max.X+hs, rect.Max.Y+hs), // br
+		image.Rect(cx-hs, rect.Max.Y-hs, cx+hs, rect.Max.Y+hs),                 // b
+		image.Rect(rect.Min.X-hs, rect.Max.Y-hs, rect.Min.X+hs, rect.Max.Y+hs), // bl
+		image.Rect(rect.Min.X-hs, cy-hs, rect.Min.X+hs, cy+hs),                 // l
+	}
+}
+
 func cropImage(img *image.RGBA, rect image.Rectangle) *image.RGBA {
 	rect = rect.Intersect(img.Bounds())
 	if rect.Empty() {
@@ -439,11 +541,13 @@ func main() {
 
 		var drawing bool
 		var cropping bool
+		var cropMode cropAction
 		var moving bool
 		var moveStart image.Point
 		var moveOffset image.Point
 		var last image.Point
 		var cropStart image.Point
+		var cropStartRect image.Rectangle
 		var cropRect image.Rectangle
 		var message string
 		var messageUntil time.Time
@@ -462,45 +566,64 @@ func main() {
 				if e.To == lifecycle.StageDead {
 					return
 				}
-			case paint.Event:
-				b := bufs[bufIdx]
-				bufIdx = 1 - bufIdx
-				draw.Draw(b.RGBA(), b.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
-				offset := tabs[current].Offset
-				imgRect := image.Rect(
-					toolbarWidth+offset.X,
-					tabHeight+offset.Y,
-					toolbarWidth+offset.X+width,
-					tabHeight+offset.Y+height,
-				)
-				imgRect := imageRect(tabs[current].Image, , )
-				xdraw.NearestNeighbor.Scale(b.RGBA(), imgRect, tabs[current].Image, tabs[current].Image.Bounds(), draw.Src, nil)
-				if tool == ToolCrop && (cropping || !cropRect.Empty()) {
-					r := cropRect
-					if cropping {
-						r = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(r)
-					}
-          r = r.Add(image.Pt(toolbarWidth, tabHeight))
-					x0 := imgRect.Min.X + int(float64(r.Min.X)*zoom)
-					y0 := imgRect.Min.Y + int(float64(r.Min.Y)*zoom)
-					x1 := imgRect.Min.X + int(float64(r.Max.X)*zoom)
-					y1 := imgRect.Min.Y + int(float64(r.Max.Y)*zoom)
-					drawLine(b.RGBA(), x0, y0, x1, y0, color.Black,1 )
-					drawLine(b.RGBA(), x0, y0, x0, y1, color.Black,1 )
-					drawLine(b.RGBA(), x1, y0, x1, y1, color.Black,1 )
-					drawLine(b.RGBA(), x0, y1, x1, y1, color.Black,1 )
-				}
-				drawTabs(b.RGBA(), tabs, current)
-				drawToolbar(b.RGBA(), tool, colorIdx, widthIdx)
-				drawShortcuts(b.RGBA(), width, height)
-				if message != "" && time.Now().Before(messageUntil) {
-					d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
-					w := d.MeasureString(message).Ceil()
-					px := toolbarWidth + (imgRect.Dx()-w)/2
-					py := tabHeight + imgRect.Dy()/2
-					d.Dot = fixed.P(px, py)
-					d.DrawString(message)
-				}
+case paint.Event:
+    b := bufs[bufIdx]
+    bufIdx = 1 - bufIdx
+
+    // clear background
+    draw.Draw(b.RGBA(), b.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
+
+    // draw the current tab’s image, scaled and offset
+    offset := tabs[current].Offset
+    img := tabs[current].Image
+    src := img.Bounds()
+    dst := image.Rect(
+        toolbarWidth+offset.X,
+        tabHeight+offset.Y,
+        toolbarWidth+offset.X+int(float64(src.Dx())*zoom),
+        tabHeight+offset.Y+int(float64(src.Dy())*zoom),
+    )
+    xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, src, draw.Src, nil)
+
+    // if cropping, draw the selection box (and handles)
+    if tool == ToolCrop && (cropping || !cropRect.Empty()) {
+        // build the rectangle in image‐coords
+        sel := cropRect
+        if cropping {
+            sel = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(sel)
+        }
+        // scale it to screen‐coords
+        r := image.Rect(
+            dst.Min.X+int(float64(sel.Min.X)*zoom),
+            dst.Min.Y+int(float64(sel.Min.Y)*zoom),
+            dst.Min.X+int(float64(sel.Max.X)*zoom),
+            dst.Min.Y+int(float64(sel.Max.Y)*zoom),
+        )
+        // dashed outline
+        drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
+        // little handles at each corner/edge
+        for _, hr := range cropHandleRects(r) {
+            draw.Draw(b.RGBA(), hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
+            drawRect(b.RGBA(), hr, color.Black)
+            drawDashedRect(b.RGBA(), hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
+        }
+    }
+
+    // UI chrome
+    drawTabs(b.RGBA(), tabs, current)
+    drawToolbar(b.RGBA(), tool, colorIdx, widthIdx)
+    drawShortcuts(b.RGBA(), width, height)
+
+    // transient message overlay
+    if message != "" && time.Now().Before(messageUntil) {
+        d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
+        w := d.MeasureString(message).Ceil()
+        px := toolbarWidth + (dst.Dx()-w)/2
+        py := tabHeight + dst.Dy()
+        // position and draw
+        d.Dot = fixed.P(px, py)
+        d.DrawString(message)
+    }
 				w.Upload(image.Point{}, b, b.Bounds())
 				w.Publish()
 			case mouse.Event:
@@ -568,9 +691,27 @@ func main() {
 							moveStart = image.Point{int(e.X), int(e.Y)}
 							moveOffset = tabs[current].Offset
 						case ToolCrop:
+							p := image.Point{mx, my}
+							action := cropNone
+							for i, hr := range cropHandleRects(cropRect) {
+								if p.In(hr) {
+									action = cropAction(i + int(cropResizeTL))
+									break
+								}
+							}
+							if action == cropNone {
+								if !cropRect.Empty() && p.In(cropRect) {
+									action = cropMove
+								} else {
+									action = cropResizeBR
+									cropRect = image.Rect(mx, my, mx, my)
+								}
+							}
 							cropping = true
-							cropStart = image.Point{mx, my}
-							cropRect = image.Rect(mx, my, mx, my)
+							cropMode = action
+							cropStart = p
+							cropStartRect = cropRect
+							w.Send(paint.Event{})
 						case ToolDraw:
 							drawing = true
 							last = image.Point{mx, my}
@@ -580,7 +721,41 @@ func main() {
 						}
 					} else if e.Direction == mouse.DirRelease {
 						if cropping && tool == ToolCrop {
-							cropRect = cropRect.Union(image.Rect(mx, my, mx, my))
+							dx := mx - cropStart.X
+							dy := my - cropStart.Y
+							r := cropStartRect
+							switch cropMode {
+							case cropMove:
+								r = r.Add(image.Pt(dx, dy))
+							case cropResizeTL:
+								r.Min.X = cropStartRect.Min.X + dx
+								r.Min.Y = cropStartRect.Min.Y + dy
+							case cropResizeT:
+								r.Min.Y = cropStartRect.Min.Y + dy
+							case cropResizeTR:
+								r.Min.Y = cropStartRect.Min.Y + dy
+								r.Max.X = cropStartRect.Max.X + dx
+							case cropResizeR:
+								r.Max.X = cropStartRect.Max.X + dx
+							case cropResizeBR:
+								r.Max.X = cropStartRect.Max.X + dx
+								r.Max.Y = cropStartRect.Max.Y + dy
+							case cropResizeB:
+								r.Max.Y = cropStartRect.Max.Y + dy
+							case cropResizeBL:
+								r.Min.X = cropStartRect.Min.X + dx
+								r.Max.Y = cropStartRect.Max.Y + dy
+							case cropResizeL:
+								r.Min.X = cropStartRect.Min.X + dx
+							}
+							if r.Min.X > r.Max.X {
+								r.Min.X, r.Max.X = r.Max.X, r.Min.X
+							}
+							if r.Min.Y > r.Max.Y {
+								r.Min.Y, r.Max.Y = r.Max.Y, r.Min.Y
+							}
+							r = r.Intersect(tabs[current].Image.Bounds())
+							cropRect = r
 						}
 						if drawing && tool != ToolCrop {
 							switch tool {
@@ -609,6 +784,45 @@ func main() {
 						cropping = false
 						moving = false
 					}
+				}
+
+				if cropping && tool == ToolCrop && e.Direction == mouse.DirNone {
+					dx := mx - cropStart.X
+					dy := my - cropStart.Y
+					r := cropStartRect
+					switch cropMode {
+					case cropMove:
+						r = r.Add(image.Pt(dx, dy))
+					case cropResizeTL:
+						r.Min.X = cropStartRect.Min.X + dx
+						r.Min.Y = cropStartRect.Min.Y + dy
+					case cropResizeT:
+						r.Min.Y = cropStartRect.Min.Y + dy
+					case cropResizeTR:
+						r.Min.Y = cropStartRect.Min.Y + dy
+						r.Max.X = cropStartRect.Max.X + dx
+					case cropResizeR:
+						r.Max.X = cropStartRect.Max.X + dx
+					case cropResizeBR:
+						r.Max.X = cropStartRect.Max.X + dx
+						r.Max.Y = cropStartRect.Max.Y + dy
+					case cropResizeB:
+						r.Max.Y = cropStartRect.Max.Y + dy
+					case cropResizeBL:
+						r.Min.X = cropStartRect.Min.X + dx
+						r.Max.Y = cropStartRect.Max.Y + dy
+					case cropResizeL:
+						r.Min.X = cropStartRect.Min.X + dx
+					}
+					if r.Min.X > r.Max.X {
+						r.Min.X, r.Max.X = r.Max.X, r.Min.X
+					}
+					if r.Min.Y > r.Max.Y {
+						r.Min.Y, r.Max.Y = r.Max.Y, r.Min.Y
+					}
+					r = r.Intersect(tabs[current].Image.Bounds())
+					cropRect = r
+					w.Send(paint.Event{})
 				}
 
 				if drawing && tool == ToolDraw && e.Direction == mouse.DirNone {
@@ -687,13 +901,27 @@ func main() {
 							zoom = 0.1
 						}
 						w.Send(paint.Event{})
-					case '\r':
-						if tool == ToolCrop && !cropRect.Empty() {
-							tabs[current].Image = cropImage(tabs[current].Image, cropRect)
-							tabs[current].Offset = image.Point{}
-							cropping = false
-							zoom = fitZoom(tabs[current].Image, width, height)
-							w.Send(paint.Event{})
+					case -1:
+						switch e.Code {
+						case key.CodeReturnEnter:
+							if tool == ToolCrop && !cropRect.Empty() {
+								cropped := cropImage(tabs[current].Image, cropRect)
+								if e.Modifiers&key.ModControl != 0 {
+									tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1)})
+									current = len(tabs) - 1
+								} else {
+									tabs[current].Image = cropped
+								}
+								cropping = false
+								cropRect = image.Rectangle{}
+								w.Send(paint.Event{})
+							}
+						case key.CodeEscape:
+							if tool == ToolCrop {
+								cropRect = image.Rectangle{}
+								cropping = false
+								w.Send(paint.Event{})
+							}
 						}
 					}
 				}
