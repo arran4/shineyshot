@@ -12,6 +12,10 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
+
 	"github.com/godbus/dbus/v5"
 
 	"golang.org/x/exp/shiny/driver"
@@ -20,6 +24,16 @@ import (
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/mouse"
 	"golang.org/x/mobile/event/paint"
+)
+
+type Tab struct {
+	img   *image.RGBA
+	title string
+}
+
+const (
+	tabBarHeight = 30
+	tabWidth     = 120
 )
 
 func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
@@ -134,13 +148,19 @@ func main() {
 		draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
 	}
 
+	tabs := []Tab{{img: rgba, title: "Tab 1"}}
+	currentTab := 0
+
+	winWidth := tabs[currentTab].img.Bounds().Dx()
+	winHeight := tabs[currentTab].img.Bounds().Dy() + tabBarHeight
+
 	driver.Main(func(s screen.Screen) {
-		w, err := s.NewWindow(&screen.NewWindowOptions{Width: rgba.Bounds().Dx(), Height: rgba.Bounds().Dy()})
+		w, err := s.NewWindow(&screen.NewWindowOptions{Width: winWidth, Height: winHeight})
 		if err != nil {
 			log.Fatalf("new window: %v", err)
 		}
 		defer w.Release()
-		b, err := s.NewBuffer(rgba.Bounds().Size())
+		b, err := s.NewBuffer(image.Point{winWidth, winHeight})
 		if err != nil {
 			log.Fatalf("new buffer: %v", err)
 		}
@@ -158,36 +178,68 @@ func main() {
 					return
 				}
 			case paint.Event:
-				draw.Draw(b.RGBA(), b.Bounds(), rgba, image.Point{}, draw.Src)
+				draw.Draw(b.RGBA(), image.Rect(0, tabBarHeight, winWidth, winHeight), tabs[currentTab].img, image.Point{}, draw.Src)
+				for i, t := range tabs {
+					rect := image.Rect(i*tabWidth, 0, (i+1)*tabWidth, tabBarHeight)
+					clr := color.RGBA{200, 200, 200, 255}
+					if i == currentTab {
+						clr = color.RGBA{220, 220, 220, 255}
+					}
+					draw.Draw(b.RGBA(), rect, &image.Uniform{clr}, image.Point{}, draw.Src)
+					d := &font.Drawer{
+						Dst:  b.RGBA(),
+						Src:  image.Black,
+						Face: basicfont.Face7x13,
+						Dot:  fixed.Point26_6{X: fixed.I(rect.Min.X + 5), Y: fixed.I(rect.Min.Y + 20)},
+					}
+					d.DrawString(t.title)
+				}
 				w.Upload(image.Point{}, b, b.Bounds())
 				w.Publish()
 			case mouse.Event:
 				if e.Button == mouse.ButtonLeft {
 					if e.Direction == mouse.DirPress {
+						if int(e.Y) <= tabBarHeight {
+							idx := int(e.X) / tabWidth
+							if idx >= 0 && idx < len(tabs) {
+								currentTab = idx
+								w.Send(paint.Event{})
+							}
+							continue
+						}
 						drawing = true
-						last = image.Point{int(e.X), int(e.Y)}
+						last = image.Point{int(e.X), int(e.Y) - tabBarHeight}
 					} else if e.Direction == mouse.DirRelease {
 						drawing = false
 					}
 				}
 				if drawing && e.Direction == mouse.DirNone {
-					p := image.Point{int(e.X), int(e.Y)}
-					drawLine(rgba, last.X, last.Y, p.X, p.Y, col)
+					p := image.Point{int(e.X), int(e.Y) - tabBarHeight}
+					drawLine(tabs[currentTab].img, last.X, last.Y, p.X, p.Y, col)
 					last = p
 					w.Send(paint.Event{})
 				}
 			case key.Event:
 				if e.Direction == key.DirPress {
-					if e.Rune == 's' || e.Rune == 'S' {
+					switch e.Rune {
+					case 's', 'S':
 						out, err := os.Create(*output)
 						if err != nil {
 							log.Printf("save: %v", err)
 							continue
 						}
-						png.Encode(out, rgba)
+						png.Encode(out, tabs[currentTab].img)
 						out.Close()
 						log.Printf("saved %s", *output)
-					} else if e.Rune == 'q' || e.Rune == 'Q' {
+					case 'n', 'N':
+						img, err := captureScreenshot()
+						if err != nil {
+							log.Printf("capture: %v", err)
+							break
+						}
+						tabs = append(tabs, Tab{img: img, title: fmt.Sprintf("Tab %d", len(tabs)+1)})
+						w.Send(paint.Event{})
+					case 'q', 'Q':
 						return
 					}
 				}

@@ -5,12 +5,14 @@ ShineyShot is a minimal screenshot and annotation tool built with
 Screenshots are captured directly via the
 [XDG Desktop Portal](https://flatpak.github.io/xdg-desktop-portal/) screenshot
 API on Wayland compositors.
+It now includes a simple tabbed interface similar to classic paint programs.
 
 ## Features
 
 - Capture a screenshot using the portal if no existing image is provided.
 - Draw annotations with the mouse.
 - Press **s** to save the annotated image.
+- Press **n** to capture a new screenshot in a new tab.
 - Press **q** to quit.
 
 ## Requirements
