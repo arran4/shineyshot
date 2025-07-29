@@ -221,17 +221,41 @@ func drawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
 	drawLine(img, x1, y1, x3, y3, col)
 }
 
+func drawFilledCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
+	for dy := -r; dy <= r; dy++ {
+		for dx := -r; dx <= r; dx++ {
+			if dx*dx+dy*dy <= r*r {
+				px := cx + dx
+				py := cy + dy
+				if image.Pt(px, py).In(img.Bounds()) {
+					img.Set(px, py, col)
+				}
+			}
+		}
+	}
+}
+
 func drawNumberBox(img *image.RGBA, x, y, num int, col color.Color) {
+	r := 10
+	cx := x + r
+	cy := y + r
+	drawFilledCircle(img, cx, cy, r, col)
+
+	cr, cg, cb, _ := col.RGBA()
+	brightness := 0.299*float64(cr>>8) + 0.587*float64(cg>>8) + 0.114*float64(cb>>8)
+	textCol := color.Black
+	if brightness < 128 {
+		textCol = color.White
+	}
+
 	text := fmt.Sprintf("%d", num)
 	d := &font.Drawer{
 		Dst:  img,
-		Src:  image.NewUniform(col),
+		Src:  image.NewUniform(textCol),
 		Face: basicfont.Face7x13,
-		Dot:  fixed.P(x+4, y+12),
 	}
-	rect := image.Rect(x, y, x+20, y+16)
-	draw.Draw(img, rect, &image.Uniform{color.RGBA{255, 255, 255, 200}}, image.Point{}, draw.Src)
-	draw.Draw(img, rect, &image.Uniform{col}, image.Point{}, draw.Over)
+	w := d.MeasureString(text).Ceil()
+	d.Dot = fixed.P(cx-w/2, cy+4)
 	d.DrawString(text)
 }
 
@@ -362,7 +386,7 @@ func main() {
 		var cropRect image.Rectangle
 		var message string
 		var messageUntil time.Time
-		nextNumber := 1
+		nextNumber := 0
 		tool := ToolMove
 		colorIdx := 2 // red
 
