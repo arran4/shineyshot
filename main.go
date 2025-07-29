@@ -725,24 +725,27 @@ func main() {
 						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1)})
 						current = len(tabs) - 1
 						w.Send(paint.Event{})
-					case '\r':
-						if tool == ToolCrop && !cropRect.Empty() {
-							cropped := cropImage(tabs[current].Image, cropRect)
-							if e.Modifiers&key.ModControl != 0 {
-								tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1)})
-								current = len(tabs) - 1
-							} else {
-								tabs[current].Image = cropped
+					case -1:
+						switch e.Code {
+						case key.CodeReturnEnter:
+							if tool == ToolCrop && !cropRect.Empty() {
+								cropped := cropImage(tabs[current].Image, cropRect)
+								if e.Modifiers&key.ModControl != 0 {
+									tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1)})
+									current = len(tabs) - 1
+								} else {
+									tabs[current].Image = cropped
+								}
+								cropping = false
+								cropRect = image.Rectangle{}
+								w.Send(paint.Event{})
 							}
-							cropping = false
-							cropRect = image.Rectangle{}
-							w.Send(paint.Event{})
-						}
-					case 0:
-						if e.Code == key.CodeEscape && tool == ToolCrop {
-							cropRect = image.Rectangle{}
-							cropping = false
-							w.Send(paint.Event{})
+						case key.CodeEscape:
+							if tool == ToolCrop {
+								cropRect = image.Rectangle{}
+								cropping = false
+								w.Send(paint.Event{})
+							}
 						}
 					}
 				}
