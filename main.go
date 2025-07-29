@@ -327,7 +327,7 @@ func main() {
 
 	driver.Main(func(s screen.Screen) {
 		width := rgba.Bounds().Dx() + toolbarWidth
-		height := rgba.Bounds().Dy() + tabHeight + bottomHeight
+		height := rgba.Bounds().Dy() + tabHeight
 		w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height})
 		if err != nil {
 			log.Fatalf("new window: %v", err)
