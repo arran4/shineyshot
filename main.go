@@ -162,6 +162,8 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx int) {
 				c = color.RGBA{150, 150, 150, 255}
 			}
 			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
+			// sample line showing the width in the selected color
+			drawLine(dst, 4, y+8, toolbarWidth-4, y+8, palette[colIdx], w)
 			d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, y+12)}
 			d.DrawString(fmt.Sprintf("%d", w))
 			y += 16
