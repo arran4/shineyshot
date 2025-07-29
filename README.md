@@ -14,6 +14,7 @@ API on Wayland compositors.
 - Tabbed interface for multiple images.
 - Press **n** to capture a new screenshot in a new tab.
 - Press **s** to save the active tab.
+- Use **+** and **-** to zoom in and out.
 - Press **q** to quit.
 
 ## Requirements

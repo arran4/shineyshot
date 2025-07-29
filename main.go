@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
@@ -72,7 +73,33 @@ var palette = []color.RGBA{
 	{128, 128, 128, 255},
 }
 
+// zoom controls the current zoom level when rendering images.
+// A value of 1 draws at the image's native resolution.
+var zoom float64
+
+func fitZoom(img *image.RGBA, winW, winH int) float64 {
+	availW := winW - toolbarWidth
+	availH := winH - tabHeight - bottomHeight
+	zx := float64(availW) / float64(img.Bounds().Dx())
+	zy := float64(availH) / float64(img.Bounds().Dy())
+	if zx < zy {
+		return zx
+	}
+	return zy
+}
+
+func imageRect(img *image.RGBA, winW, winH int) image.Rectangle {
+	availW := winW - toolbarWidth
+	availH := winH - tabHeight - bottomHeight
+	w := int(float64(img.Bounds().Dx()) * zoom)
+	h := int(float64(img.Bounds().Dy()) * zoom)
+	x0 := toolbarWidth + (availW-w)/2
+	y0 := tabHeight + (availH-h)/2
+	return image.Rect(x0, y0, x0+w, y0+h)
+}
+
 var widths = []int{1, 2, 4, 6, 8}
+
 
 func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	// background for title area
@@ -110,7 +137,8 @@ func drawShortcuts(dst *image.RGBA, width, height int) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 
-	shortcuts := []string{"N:new", "D:delete", "C:copy", "S:save", "Q:quit"}
+	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", zoom*100)
+	shortcuts := []string{"N:new", zoomStr, "D:delete", "C:copy", "S:save", "Q:quit"}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
 	for _, sc := range shortcuts {
@@ -425,6 +453,7 @@ func main() {
 		widthIdx := 0
 
 		col := palette[colorIdx]
+		zoom = fitZoom(rgba, width, height)
 
 		for {
 			e := w.NextEvent()
@@ -441,21 +470,25 @@ func main() {
 				imgRect := image.Rect(
 					toolbarWidth+offset.X,
 					tabHeight+offset.Y,
-					toolbarWidth+offset.X+tabs[current].Image.Bounds().Dx(),
-					tabHeight+offset.Y+tabs[current].Image.Bounds().Dy(),
+					toolbarWidth+offset.X+width,
+					tabHeight+offset.Y+height,
 				)
-				draw.Draw(b.RGBA(), imgRect, tabs[current].Image, image.Point{}, draw.Src)
+				imgRect := imageRect(tabs[current].Image, , )
+				xdraw.NearestNeighbor.Scale(b.RGBA(), imgRect, tabs[current].Image, tabs[current].Image.Bounds(), draw.Src, nil)
 				if tool == ToolCrop && (cropping || !cropRect.Empty()) {
 					r := cropRect
 					if cropping {
 						r = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(r)
 					}
-					r = r.Add(image.Pt(toolbarWidth, tabHeight))
-					//r = r.Add(image.Pt(toolbarWidth+offset.X, tabHeight+offset.Y))
-					drawLine(b.RGBA(), r.Min.X, r.Min.Y, r.Max.X, r.Min.Y, color.Black, 1)
-					drawLine(b.RGBA(), r.Min.X, r.Min.Y, r.Min.X, r.Max.Y, color.Black, 1)
-					drawLine(b.RGBA(), r.Max.X, r.Min.Y, r.Max.X, r.Max.Y, color.Black, 1)
-					drawLine(b.RGBA(), r.Min.X, r.Max.Y, r.Max.X, r.Max.Y, color.Black, 1)
+          r = r.Add(image.Pt(toolbarWidth, tabHeight))
+					x0 := imgRect.Min.X + int(float64(r.Min.X)*zoom)
+					y0 := imgRect.Min.Y + int(float64(r.Min.Y)*zoom)
+					x1 := imgRect.Min.X + int(float64(r.Max.X)*zoom)
+					y1 := imgRect.Min.Y + int(float64(r.Max.Y)*zoom)
+					drawLine(b.RGBA(), x0, y0, x1, y0, color.Black,1 )
+					drawLine(b.RGBA(), x0, y0, x0, y1, color.Black,1 )
+					drawLine(b.RGBA(), x1, y0, x1, y1, color.Black,1 )
+					drawLine(b.RGBA(), x0, y1, x1, y1, color.Black,1 )
 				}
 				drawTabs(b.RGBA(), tabs, current)
 				drawToolbar(b.RGBA(), tool, colorIdx, widthIdx)
@@ -517,8 +550,13 @@ func main() {
 					}
 				}
 
-				mx := int(e.X) - toolbarWidth - tabs[current].Offset.X
-				my := int(e.Y) - tabHeight - tabs[current].Offset.Y
+				imgRect := imageRect(tabs[current].Image, width, height)
+				if int(e.X) < imgRect.Min.X || int(e.X) > imgRect.Max.X || int(e.Y) < imgRect.Min.Y || int(e.Y) > imgRect.Max.Y {
+					break
+				}
+
+				mx := int((float64(e.X) - float64(imgRect.Min.X + toolbarWidth + tabs[current].Offset.X)) / zoom)
+				my := int((float64(e.Y) - float64(imgRect.Min.Y) +  - tabHeight - tabs[current].Offset.Y) / zoom)
 				if tool != ToolMove && !image.Pt(mx, my).In(tabs[current].Image.Bounds()) {
 					break
 				}
@@ -635,12 +673,26 @@ func main() {
 						}
 						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}})
 						current = len(tabs) - 1
+						zoom = fitZoom(tabs[current].Image, width, height)
+						w.Send(paint.Event{})
+					case '+', '=':
+						zoom *= 1.25
+						if zoom < 0.1 {
+							zoom = 0.1
+						}
+						w.Send(paint.Event{})
+					case '-':
+						zoom /= 1.25
+						if zoom < 0.1 {
+							zoom = 0.1
+						}
 						w.Send(paint.Event{})
 					case '\r':
 						if tool == ToolCrop && !cropRect.Empty() {
 							tabs[current].Image = cropImage(tabs[current].Image, cropRect)
 							tabs[current].Offset = image.Point{}
 							cropping = false
+							zoom = fitZoom(tabs[current].Image, width, height)
 							w.Send(paint.Event{})
 						}
 					}
