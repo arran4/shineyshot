@@ -52,6 +52,7 @@ type Tab struct {
 	Image  *image.RGBA
 	Title  string
 	Offset image.Point
+	Zoom   float64
 }
 
 const handleSize = 8
@@ -90,10 +91,6 @@ var palette = []color.RGBA{
 	{128, 128, 128, 255},
 }
 
-// zoom controls the current zoom level when rendering images.
-// A value of 1 draws at the image's native resolution.
-var zoom float64
-
 func fitZoom(img *image.RGBA, winW, winH int) float64 {
 	availW := winW - toolbarWidth
 	availH := winH - tabHeight - bottomHeight
@@ -105,7 +102,7 @@ func fitZoom(img *image.RGBA, winW, winH int) float64 {
 	return zy
 }
 
-func imageRect(img *image.RGBA, winW, winH int) image.Rectangle {
+func imageRect(img *image.RGBA, winW, winH int, zoom float64) image.Rectangle {
 	availW := winW - toolbarWidth
 	availH := winH - tabHeight - bottomHeight
 	w := int(float64(img.Bounds().Dx()) * zoom)
@@ -116,6 +113,7 @@ func imageRect(img *image.RGBA, winW, winH int) image.Rectangle {
 }
 
 var widths = []int{1, 2, 4, 6, 8}
+var numberSizes = []int{8, 12, 16, 20, 24}
 
 func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	// background for title area
@@ -149,10 +147,10 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int, tool Tool) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, z float64) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
-	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", zoom*100)
+	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", z*100)
 	shortcuts := []string{"N:new", zoomStr, "D:delete", "C:copy", "S:save", "Q:quit"}
 	if tool == ToolCrop {
 		shortcuts = append(shortcuts, "Enter:crop", "Ctrl+Enter:new tab", "Esc:cancel")
@@ -166,7 +164,7 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool) {
 	}
 }
 
-func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx int) {
+func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 	y := tabHeight
 	tools := []string{"Move", "Crop", "Draw", "Circle", "Line", "Arrow", "Num"}
 	for i, name := range tools {
@@ -215,6 +213,22 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx int) {
 			d.DrawString(fmt.Sprintf("%d", w))
 			lineY := y + 8
 			drawLine(dst, 30, lineY, toolbarWidth-4, lineY, col, w)
+			y += 16
+		}
+	}
+	if tool == ToolNumber {
+		y += 4
+		col := palette[colIdx]
+		for i, s := range numberSizes {
+			rect := image.Rect(0, y, toolbarWidth, y+16)
+			c := color.RGBA{200, 200, 200, 255}
+			if i == numberIdx {
+				c = color.RGBA{150, 150, 150, 255}
+			}
+			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
+			d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, y+12)}
+			d.DrawString(fmt.Sprintf("%d", s))
+			drawFilledCircle(dst, (toolbarWidth+30)/2, y+8, s/2, col)
 			y += 16
 		}
 	}
@@ -286,7 +300,7 @@ func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
 func drawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
 	drawLine(img, x0, y0, x1, y1, col, thick)
 	angle := math.Atan2(float64(y1-y0), float64(x1-x0))
-	const size = 6
+	size := float64(6 + thick*2)
 	a1 := angle + math.Pi/6
 	a2 := angle - math.Pi/6
 	x2 := x1 - int(math.Cos(a1)*size)
@@ -311,8 +325,8 @@ func drawFilledCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
 	}
 }
 
-func drawNumberBox(img *image.RGBA, x, y, num int, col color.Color) {
-	r := 10
+func drawNumberBox(img *image.RGBA, x, y, num int, col color.Color, size int) {
+	r := size
 	cx := x + r
 	cy := y + r
 	drawFilledCircle(img, cx, cy, r, col)
@@ -535,7 +549,7 @@ func main() {
 		}
 		bufIdx := 0
 
-		tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}}}
+		tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}, Zoom: 1}}
 		current := 0
 
 		var drawing bool
@@ -553,10 +567,11 @@ func main() {
 		nextNumber := 0
 		tool := ToolMove
 		colorIdx := 2 // red
-		widthIdx := 0
+		widthIdx := 2 // default width 4
+		numberIdx := 0
 
 		col := palette[colorIdx]
-		zoom = fitZoom(rgba, width, height)
+		tabs[current].Zoom = fitZoom(rgba, width, height)
 
 		for {
 			e := w.NextEvent()
@@ -579,8 +594,8 @@ func main() {
 				dst := image.Rect(
 					toolbarWidth+offset.X,
 					tabHeight+offset.Y,
-					toolbarWidth+offset.X+int(float64(src.Dx())*zoom),
-					tabHeight+offset.Y+int(float64(src.Dy())*zoom),
+					toolbarWidth+offset.X+int(float64(src.Dx())*tabs[current].Zoom),
+					tabHeight+offset.Y+int(float64(src.Dy())*tabs[current].Zoom),
 				)
 				xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, src, draw.Src, nil)
 
@@ -593,10 +608,10 @@ func main() {
 					}
 					// scale it to screen‐coords
 					r := image.Rect(
-						dst.Min.X+int(float64(sel.Min.X)*zoom),
-						dst.Min.Y+int(float64(sel.Min.Y)*zoom),
-						dst.Min.X+int(float64(sel.Max.X)*zoom),
-						dst.Min.Y+int(float64(sel.Max.Y)*zoom),
+						dst.Min.X+int(float64(sel.Min.X)*tabs[current].Zoom),
+						dst.Min.Y+int(float64(sel.Min.Y)*tabs[current].Zoom),
+						dst.Min.X+int(float64(sel.Max.X)*tabs[current].Zoom),
+						dst.Min.Y+int(float64(sel.Max.Y)*tabs[current].Zoom),
 					)
 					// dashed outline
 					drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
@@ -610,8 +625,8 @@ func main() {
 
 				// UI chrome
 				drawTabs(b.RGBA(), tabs, current)
-				drawToolbar(b.RGBA(), tool, colorIdx, widthIdx)
-				drawShortcuts(b.RGBA(), width, height, tool)
+				drawToolbar(b.RGBA(), tool, colorIdx, widthIdx, numberIdx)
+				drawShortcuts(b.RGBA(), width, height, tool, tabs[current].Zoom)
 
 				// transient message overlay
 				if message != "" && time.Now().Before(messageUntil) {
@@ -669,16 +684,23 @@ func main() {
 							w.Send(paint.Event{})
 							continue
 						}
+					} else if tool == ToolNumber && pos >= 0 {
+						nidx := pos / 16
+						if nidx >= 0 && nidx < len(numberSizes) {
+							numberIdx = nidx
+							w.Send(paint.Event{})
+							continue
+						}
 					}
 				}
 
-				imgRect := imageRect(tabs[current].Image, width, height).Add(tabs[current].Offset)
+				imgRect := imageRect(tabs[current].Image, width, height, tabs[current].Zoom).Add(tabs[current].Offset)
 				if int(e.X) < imgRect.Min.X || int(e.X) > imgRect.Max.X || int(e.Y) < imgRect.Min.Y || int(e.Y) > imgRect.Max.Y {
 					break
 				}
 
-				mx := int((float64(e.X) - float64(imgRect.Min.X)) / zoom)
-				my := int((float64(e.Y) - float64(imgRect.Min.Y)) / zoom)
+				mx := int((float64(e.X) - float64(imgRect.Min.X)) / tabs[current].Zoom)
+				my := int((float64(e.Y) - float64(imgRect.Min.Y)) / tabs[current].Zoom)
 				if tool != ToolMove && !image.Pt(mx, my).In(tabs[current].Image.Bounds()) {
 					break
 				}
@@ -768,7 +790,7 @@ func main() {
 							case ToolArrow:
 								drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col, widths[widthIdx])
 							case ToolNumber:
-								drawNumberBox(tabs[current].Image, mx, my, nextNumber, col)
+								drawNumberBox(tabs[current].Image, mx, my, nextNumber, col, numberSizes[numberIdx])
 								nextNumber++
 							}
 							w.Send(paint.Event{})
@@ -884,20 +906,20 @@ func main() {
 							log.Printf("capture screenshot: %v", err)
 							continue
 						}
-						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}})
+						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1})
 						current = len(tabs) - 1
-						zoom = fitZoom(tabs[current].Image, width, height)
+						tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
 						w.Send(paint.Event{})
 					case '+', '=':
-						zoom *= 1.25
-						if zoom < 0.1 {
-							zoom = 0.1
+						tabs[current].Zoom *= 1.25
+						if tabs[current].Zoom < 0.1 {
+							tabs[current].Zoom = 0.1
 						}
 						w.Send(paint.Event{})
 					case '-':
-						zoom /= 1.25
-						if zoom < 0.1 {
-							zoom = 0.1
+						tabs[current].Zoom /= 1.25
+						if tabs[current].Zoom < 0.1 {
+							tabs[current].Zoom = 0.1
 						}
 						w.Send(paint.Event{})
 					case -1:
