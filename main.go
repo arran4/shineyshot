@@ -676,7 +676,7 @@ func main() {
 					int(float64(off.X)*zoom),
 					int(float64(off.Y)*zoom),
 				))
-				xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, img.Bounds(), draw.Src, nil)
+				xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, img.Bounds(), draw.Over, nil)
 
 				// if cropping, draw the selection box (and handles)
 				if tool == ToolCrop && (cropping || !cropRect.Empty()) {
