@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"golang.org/x/image/font"
@@ -14,8 +15,10 @@ import (
 	"math"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/godbus/dbus/v5"
+	"golang.design/x/clipboard"
 
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
@@ -26,6 +29,20 @@ import (
 )
 
 const tabHeight = 24
+const shortcutBarHeight = 24
+
+type Shortcut struct {
+	Key   rune
+	Label string
+}
+
+var shortcuts = []Shortcut{
+	{'N', "New"},
+	{'D', "Delete"},
+	{'C', "Copy"},
+	{'S', "Save"},
+	{'Q', "Quit"},
+}
 
 type Tab struct {
 	Image *image.RGBA
@@ -52,6 +69,24 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	}
 	// fill remainder of bar
 	draw.Draw(dst, image.Rect(x, 0, dst.Bounds().Dx(), tabHeight), &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
+}
+
+func drawShortcuts(dst *image.RGBA) {
+	y := dst.Bounds().Dy() - shortcutBarHeight
+	x := 0
+	for _, s := range shortcuts {
+		rect := image.Rect(x, y, x+80, y+shortcutBarHeight)
+		draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
+		d := &font.Drawer{
+			Dst:  dst,
+			Src:  image.Black,
+			Face: basicfont.Face7x13,
+			Dot:  fixed.P(x+4, y+16),
+		}
+		d.DrawString(fmt.Sprintf("%c - %s", s.Key, s.Label))
+		x += 80
+	}
+	draw.Draw(dst, image.Rect(x, y, dst.Bounds().Dx(), y+shortcutBarHeight), &image.Uniform{color.RGBA{240, 240, 240, 255}}, image.Point{}, draw.Src)
 }
 
 func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
@@ -167,8 +202,13 @@ func main() {
 	}
 
 	driver.Main(func(s screen.Screen) {
+		if err := clipboard.Init(); err != nil {
+			log.Printf("clipboard init: %v", err)
+		}
+
+		imgHeight := rgba.Bounds().Dy()
 		width := rgba.Bounds().Dx()
-		height := rgba.Bounds().Dy() + tabHeight
+		height := imgHeight + tabHeight + shortcutBarHeight
 		w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height})
 		if err != nil {
 			log.Fatalf("new window: %v", err)
@@ -183,6 +223,9 @@ func main() {
 		tabs := []Tab{{Image: rgba, Title: "1"}}
 		current := 0
 
+		var snackbarMsg string
+		var snackbarUntil time.Time
+
 		var drawing bool
 		var last image.Point
 		col := color.RGBA{255, 0, 0, 255}
@@ -195,8 +238,28 @@ func main() {
 					return
 				}
 			case paint.Event:
-				draw.Draw(b.RGBA(), image.Rect(0, tabHeight, width, height), tabs[current].Image, image.Point{}, draw.Src)
+				if current >= len(tabs) {
+					current = len(tabs) - 1
+				}
+				if len(tabs) == 0 {
+					draw.Draw(b.RGBA(), image.Rect(0, tabHeight, width, height-shortcutBarHeight), &image.Uniform{color.White}, image.Point{}, draw.Src)
+					d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
+					msg := "No screenshot available"
+					x := (width - len(msg)*7) / 2
+					y := tabHeight + (imgHeight / 2)
+					d.Dot = fixed.P(x, y)
+					d.DrawString(msg)
+				} else {
+					draw.Draw(b.RGBA(), image.Rect(0, tabHeight, width, tabHeight+imgHeight), tabs[current].Image, image.Point{}, draw.Src)
+				}
 				drawTabs(b.RGBA(), tabs, current)
+				drawShortcuts(b.RGBA())
+				if snackbarMsg != "" && time.Now().Before(snackbarUntil) {
+					box := image.Rect(width/2-80, tabHeight+imgHeight/2-16, width/2+80, tabHeight+imgHeight/2+16)
+					draw.Draw(b.RGBA(), box, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
+					d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(box.Min.X+8, box.Min.Y+16)}
+					d.DrawString(snackbarMsg)
+				}
 				w.Upload(image.Point{}, b, b.Bounds())
 				w.Publish()
 			case mouse.Event:
@@ -205,6 +268,55 @@ func main() {
 					if idx >= 0 && idx < len(tabs) {
 						current = idx
 						w.Send(paint.Event{})
+					}
+					continue
+				}
+				if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress && int(e.Y) >= height-shortcutBarHeight {
+					idx := int(e.X) / 80
+					if idx >= 0 && idx < len(shortcuts) {
+						switch shortcuts[idx].Key {
+						case 'N':
+							img, err := captureScreenshot()
+							if err != nil {
+								log.Printf("capture screenshot: %v", err)
+								break
+							}
+							tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1)})
+							current = len(tabs) - 1
+							w.Send(paint.Event{})
+						case 'D':
+							if len(tabs) > 0 {
+								tabs = append(tabs[:current], tabs[current+1:]...)
+							}
+							if current >= len(tabs) {
+								current = len(tabs) - 1
+							}
+							w.Send(paint.Event{})
+						case 'C':
+							if len(tabs) > 0 {
+								var buf bytes.Buffer
+								png.Encode(&buf, tabs[current].Image)
+								clipboard.Write(clipboard.FmtImage, buf.Bytes())
+								snackbarMsg = "Copied to clipboard"
+								snackbarUntil = time.Now().Add(2 * time.Second)
+								w.Send(paint.Event{})
+							}
+						case 'S':
+							if len(tabs) > 0 {
+								out, err := os.Create(*output)
+								if err != nil {
+									log.Printf("save: %v", err)
+									break
+								}
+								png.Encode(out, tabs[current].Image)
+								out.Close()
+								snackbarMsg = fmt.Sprintf("Saved %s", *output)
+								snackbarUntil = time.Now().Add(2 * time.Second)
+								w.Send(paint.Event{})
+							}
+						case 'Q':
+							return
+						}
 					}
 					continue
 				}
@@ -224,28 +336,54 @@ func main() {
 				}
 			case key.Event:
 				if e.Direction == key.DirPress {
-					switch e.Rune {
-					case 's', 'S':
-						out, err := os.Create(*output)
-						if err != nil {
-							log.Printf("save: %v", err)
-							continue
+					handle := func(r rune) {
+						switch r {
+						case 's', 'S':
+							if len(tabs) == 0 {
+								break
+							}
+							out, err := os.Create(*output)
+							if err != nil {
+								log.Printf("save: %v", err)
+								return
+							}
+							png.Encode(out, tabs[current].Image)
+							out.Close()
+							snackbarMsg = fmt.Sprintf("Saved %s", *output)
+							snackbarUntil = time.Now().Add(2 * time.Second)
+							w.Send(paint.Event{})
+						case 'q', 'Q':
+							return
+						case 'n', 'N':
+							img, err := captureScreenshot()
+							if err != nil {
+								log.Printf("capture screenshot: %v", err)
+								return
+							}
+							tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1)})
+							current = len(tabs) - 1
+							w.Send(paint.Event{})
+						case 'd', 'D':
+							if len(tabs) > 0 {
+								tabs = append(tabs[:current], tabs[current+1:]...)
+							}
+							if current >= len(tabs) {
+								current = len(tabs) - 1
+							}
+							w.Send(paint.Event{})
+						case 'c', 'C':
+							if len(tabs) == 0 {
+								return
+							}
+							var buf bytes.Buffer
+							png.Encode(&buf, tabs[current].Image)
+							clipboard.Write(clipboard.FmtImage, buf.Bytes())
+							snackbarMsg = "Copied to clipboard"
+							snackbarUntil = time.Now().Add(2 * time.Second)
+							w.Send(paint.Event{})
 						}
-						png.Encode(out, tabs[current].Image)
-						out.Close()
-						log.Printf("saved %s", *output)
-					case 'q', 'Q':
-						return
-					case 'n', 'N':
-						img, err := captureScreenshot()
-						if err != nil {
-							log.Printf("capture screenshot: %v", err)
-							continue
-						}
-						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1)})
-						current = len(tabs) - 1
-						w.Send(paint.Event{})
 					}
+					handle(e.Rune)
 				}
 			}
 		}
