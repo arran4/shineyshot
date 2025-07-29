@@ -10,7 +10,9 @@ API on Wayland compositors.
 
 - Capture a screenshot using the portal if no existing image is provided.
 - Draw annotations with the mouse.
-- Press **s** to save the annotated image.
+- Tabbed interface for multiple images.
+- Press **n** to capture a new screenshot in a new tab.
+- Press **s** to save the active tab.
 - Press **q** to quit.
 
 ## Requirements
