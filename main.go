@@ -117,7 +117,6 @@ func imageRect(img *image.RGBA, winW, winH int) image.Rectangle {
 
 var widths = []int{1, 2, 4, 6, 8}
 
-
 func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	// background for title area
 	draw.Draw(dst, image.Rect(0, 0, toolbarWidth, tabHeight),
@@ -153,7 +152,7 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 func drawShortcuts(dst *image.RGBA, width, height int, tool Tool) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
-  zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", zoom*100)
+	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", zoom*100)
 	shortcuts := []string{"N:new", zoomStr, "D:delete", "C:copy", "S:save", "Q:quit"}
 	if tool == ToolCrop {
 		shortcuts = append(shortcuts, "Enter:crop", "Ctrl+Enter:new tab", "Esc:cancel")
@@ -396,11 +395,11 @@ func drawDashedRect(img *image.RGBA, rect image.Rectangle, dash, thickness int, 
 	drawDashedLine(img, rect.Min.X, rect.Max.Y, rect.Min.X, rect.Min.Y, dash, thickness, c1, c2)
 }
 
-func drawRect(img *image.RGBA, rect image.Rectangle, col color.Color) {
-	drawLine(img, rect.Min.X, rect.Min.Y, rect.Max.X-1, rect.Min.Y, col)
-	drawLine(img, rect.Max.X-1, rect.Min.Y, rect.Max.X-1, rect.Max.Y-1, col)
-	drawLine(img, rect.Max.X-1, rect.Max.Y-1, rect.Min.X, rect.Max.Y-1, col)
-	drawLine(img, rect.Min.X, rect.Max.Y-1, rect.Min.X, rect.Min.Y, col)
+func drawRect(img *image.RGBA, rect image.Rectangle, col color.Color, thick int) {
+	drawLine(img, rect.Min.X, rect.Min.Y, rect.Max.X-1, rect.Min.Y, col, thick)
+	drawLine(img, rect.Max.X-1, rect.Min.Y, rect.Max.X-1, rect.Max.Y-1, col, thick)
+	drawLine(img, rect.Max.X-1, rect.Max.Y-1, rect.Min.X, rect.Max.Y-1, col, thick)
+	drawLine(img, rect.Min.X, rect.Max.Y-1, rect.Min.X, rect.Min.Y, col, thick)
 }
 
 func cropHandleRects(rect image.Rectangle) []image.Rectangle {
@@ -566,64 +565,64 @@ func main() {
 				if e.To == lifecycle.StageDead {
 					return
 				}
-case paint.Event:
-    b := bufs[bufIdx]
-    bufIdx = 1 - bufIdx
+			case paint.Event:
+				b := bufs[bufIdx]
+				bufIdx = 1 - bufIdx
 
-    // clear background
-    draw.Draw(b.RGBA(), b.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
+				// clear background
+				draw.Draw(b.RGBA(), b.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
 
-    // draw the current tab’s image, scaled and offset
-    offset := tabs[current].Offset
-    img := tabs[current].Image
-    src := img.Bounds()
-    dst := image.Rect(
-        toolbarWidth+offset.X,
-        tabHeight+offset.Y,
-        toolbarWidth+offset.X+int(float64(src.Dx())*zoom),
-        tabHeight+offset.Y+int(float64(src.Dy())*zoom),
-    )
-    xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, src, draw.Src, nil)
+				// draw the current tab’s image, scaled and offset
+				offset := tabs[current].Offset
+				img := tabs[current].Image
+				src := img.Bounds()
+				dst := image.Rect(
+					toolbarWidth+offset.X,
+					tabHeight+offset.Y,
+					toolbarWidth+offset.X+int(float64(src.Dx())*zoom),
+					tabHeight+offset.Y+int(float64(src.Dy())*zoom),
+				)
+				xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, src, draw.Src, nil)
 
-    // if cropping, draw the selection box (and handles)
-    if tool == ToolCrop && (cropping || !cropRect.Empty()) {
-        // build the rectangle in image‐coords
-        sel := cropRect
-        if cropping {
-            sel = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(sel)
-        }
-        // scale it to screen‐coords
-        r := image.Rect(
-            dst.Min.X+int(float64(sel.Min.X)*zoom),
-            dst.Min.Y+int(float64(sel.Min.Y)*zoom),
-            dst.Min.X+int(float64(sel.Max.X)*zoom),
-            dst.Min.Y+int(float64(sel.Max.Y)*zoom),
-        )
-        // dashed outline
-        drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
-        // little handles at each corner/edge
-        for _, hr := range cropHandleRects(r) {
-            draw.Draw(b.RGBA(), hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
-            drawRect(b.RGBA(), hr, color.Black)
-            drawDashedRect(b.RGBA(), hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
-        }
-    }
+				// if cropping, draw the selection box (and handles)
+				if tool == ToolCrop && (cropping || !cropRect.Empty()) {
+					// build the rectangle in image‐coords
+					sel := cropRect
+					if cropping {
+						sel = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(sel)
+					}
+					// scale it to screen‐coords
+					r := image.Rect(
+						dst.Min.X+int(float64(sel.Min.X)*zoom),
+						dst.Min.Y+int(float64(sel.Min.Y)*zoom),
+						dst.Min.X+int(float64(sel.Max.X)*zoom),
+						dst.Min.Y+int(float64(sel.Max.Y)*zoom),
+					)
+					// dashed outline
+					drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
+					// little handles at each corner/edge
+					for _, hr := range cropHandleRects(r) {
+						draw.Draw(b.RGBA(), hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
+						drawRect(b.RGBA(), hr, color.Black, 1)
+						drawDashedRect(b.RGBA(), hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
+					}
+				}
 
-    // UI chrome
-    drawTabs(b.RGBA(), tabs, current)
-    drawToolbar(b.RGBA(), tool, colorIdx, widthIdx)
-    drawShortcuts(b.RGBA(), width, height)
+				// UI chrome
+				drawTabs(b.RGBA(), tabs, current)
+				drawToolbar(b.RGBA(), tool, colorIdx, widthIdx)
+				drawShortcuts(b.RGBA(), width, height, tool)
 
-    // transient message overlay
-    if message != "" && time.Now().Before(messageUntil) {
-        d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
-        w := d.MeasureString(message).Ceil()
-        px := toolbarWidth + (dst.Dx()-w)/2
-        py := tabHeight + dst.Dy()
-        // position and draw
-        d.Dot = fixed.P(px, py)
-        d.DrawString(message)
-    }
+				// transient message overlay
+				if message != "" && time.Now().Before(messageUntil) {
+					d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
+					w := d.MeasureString(message).Ceil()
+					px := toolbarWidth + (dst.Dx()-w)/2
+					py := tabHeight + dst.Dy()
+					// position and draw
+					d.Dot = fixed.P(px, py)
+					d.DrawString(message)
+				}
 				w.Upload(image.Point{}, b, b.Bounds())
 				w.Publish()
 			case mouse.Event:
@@ -673,13 +672,13 @@ case paint.Event:
 					}
 				}
 
-				imgRect := imageRect(tabs[current].Image, width, height)
+				imgRect := imageRect(tabs[current].Image, width, height).Add(tabs[current].Offset)
 				if int(e.X) < imgRect.Min.X || int(e.X) > imgRect.Max.X || int(e.Y) < imgRect.Min.Y || int(e.Y) > imgRect.Max.Y {
 					break
 				}
 
-				mx := int((float64(e.X) - float64(imgRect.Min.X + toolbarWidth + tabs[current].Offset.X)) / zoom)
-				my := int((float64(e.Y) - float64(imgRect.Min.Y) +  - tabHeight - tabs[current].Offset.Y) / zoom)
+				mx := int((float64(e.X) - float64(imgRect.Min.X)) / zoom)
+				my := int((float64(e.Y) - float64(imgRect.Min.Y)) / zoom)
 				if tool != ToolMove && !image.Pt(mx, my).In(tabs[current].Image.Bounds()) {
 					break
 				}
