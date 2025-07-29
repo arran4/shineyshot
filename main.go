@@ -32,8 +32,9 @@ import (
 const (
 	tabHeight    = 24
 	bottomHeight = 24
-	toolbarWidth = 48
 )
+
+var toolbarWidth = 48
 
 type Tool int
 
@@ -48,8 +49,9 @@ const (
 )
 
 type Tab struct {
-	Image *image.RGBA
-	Title string
+	Image  *image.RGBA
+	Title  string
+	Offset image.Point
 }
 
 var palette = []color.RGBA{
@@ -95,6 +97,9 @@ func imageRect(img *image.RGBA, winW, winH int) image.Rectangle {
 	y0 := tabHeight + (availH-h)/2
 	return image.Rect(x0, y0, x0+w, y0+h)
 }
+
+var widths = []int{1, 2, 4, 6, 8}
+
 
 func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	// background for title area
@@ -143,7 +148,7 @@ func drawShortcuts(dst *image.RGBA, width, height int) {
 	}
 }
 
-func drawToolbar(dst *image.RGBA, tool Tool, colIdx int) {
+func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx int) {
 	y := tabHeight
 	tools := []string{"Move", "Crop", "Draw", "Circle", "Line", "Arrow", "Num"}
 	for i, name := range tools {
@@ -166,10 +171,10 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx int) {
 		draw.Draw(dst, rect, &image.Uniform{p}, image.Point{}, draw.Src)
 		if i == colIdx {
 			draw.Draw(dst, rect, &image.Uniform{color.RGBA{0, 0, 0, 0}}, image.Point{}, draw.Over)
-			drawLine(dst, rect.Min.X, rect.Min.Y, rect.Max.X-1, rect.Min.Y, color.White)
-			drawLine(dst, rect.Min.X, rect.Min.Y, rect.Min.X, rect.Max.Y-1, color.White)
-			drawLine(dst, rect.Max.X-1, rect.Min.Y, rect.Max.X-1, rect.Max.Y-1, color.White)
-			drawLine(dst, rect.Min.X, rect.Max.Y-1, rect.Max.X-1, rect.Max.Y-1, color.White)
+			drawLine(dst, rect.Min.X, rect.Min.Y, rect.Max.X-1, rect.Min.Y, color.White, 1)
+			drawLine(dst, rect.Min.X, rect.Min.Y, rect.Min.X, rect.Max.Y-1, color.White, 1)
+			drawLine(dst, rect.Max.X-1, rect.Min.Y, rect.Max.X-1, rect.Max.Y-1, color.White, 1)
+			drawLine(dst, rect.Min.X, rect.Max.Y-1, rect.Max.X-1, rect.Max.Y-1, color.White, 1)
 		}
 		x += 18
 		if x+16 > toolbarWidth {
@@ -177,9 +182,40 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx int) {
 			y += 18
 		}
 	}
+
+	if tool == ToolCircle || tool == ToolLine || tool == ToolArrow {
+		y += 4
+		col := palette[colIdx]
+		for i, w := range widths {
+			rect := image.Rect(0, y, toolbarWidth, y+16)
+			c := color.RGBA{200, 200, 200, 255}
+			if i == widthIdx {
+				c = color.RGBA{150, 150, 150, 255}
+			}
+			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
+			d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, y+12)}
+			d.DrawString(fmt.Sprintf("%d", w))
+			lineY := y + 8
+			drawLine(dst, 30, lineY, toolbarWidth-4, lineY, col, w)
+			y += 16
+		}
+	}
 }
 
-func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
+func setThickPixel(img *image.RGBA, x, y, thick int, col color.Color) {
+	r := thick / 2
+	for dx := -r; dx <= r; dx++ {
+		for dy := -r; dy <= r; dy++ {
+			px := x + dx
+			py := y + dy
+			if image.Pt(px, py).In(img.Bounds()) {
+				img.Set(px, py, col)
+			}
+		}
+	}
+}
+
+func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
 	dx := math.Abs(float64(x1 - x0))
 	dy := math.Abs(float64(y1 - y0))
 	sx := -1
@@ -192,9 +228,7 @@ func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
 	}
 	err := dx - dy
 	for {
-		if image.Pt(x0, y0).In(img.Bounds()) {
-			img.Set(x0, y0, col)
-		}
+		setThickPixel(img, x0, y0, thick, col)
 		if x0 == x1 && y0 == y1 {
 			break
 		}
@@ -210,7 +244,7 @@ func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
 	}
 }
 
-func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
+func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
 	x := r
 	y := 0
 	err := 0
@@ -219,9 +253,7 @@ func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
 		for _, p := range pts {
 			px := cx + p[0]
 			py := cy + p[1]
-			if image.Pt(px, py).In(img.Bounds()) {
-				img.Set(px, py, col)
-			}
+			setThickPixel(img, px, py, thick, col)
 		}
 		y++
 		if err <= 0 {
@@ -233,8 +265,8 @@ func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
 	}
 }
 
-func drawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
-	drawLine(img, x0, y0, x1, y1, col)
+func drawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
+	drawLine(img, x0, y0, x1, y1, col, thick)
 	angle := math.Atan2(float64(y1-y0), float64(x1-x0))
 	const size = 6
 	a1 := angle + math.Pi/6
@@ -243,21 +275,45 @@ func drawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
 	y2 := y1 - int(math.Sin(a1)*size)
 	x3 := x1 - int(math.Cos(a2)*size)
 	y3 := y1 - int(math.Sin(a2)*size)
-	drawLine(img, x1, y1, x2, y2, col)
-	drawLine(img, x1, y1, x3, y3, col)
+	drawLine(img, x1, y1, x2, y2, col, thick)
+	drawLine(img, x1, y1, x3, y3, col, thick)
+}
+
+func drawFilledCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
+	for dy := -r; dy <= r; dy++ {
+		for dx := -r; dx <= r; dx++ {
+			if dx*dx+dy*dy <= r*r {
+				px := cx + dx
+				py := cy + dy
+				if image.Pt(px, py).In(img.Bounds()) {
+					img.Set(px, py, col)
+				}
+			}
+		}
+	}
 }
 
 func drawNumberBox(img *image.RGBA, x, y, num int, col color.Color) {
+	r := 10
+	cx := x + r
+	cy := y + r
+	drawFilledCircle(img, cx, cy, r, col)
+
+	cr, cg, cb, _ := col.RGBA()
+	brightness := 0.299*float64(cr>>8) + 0.587*float64(cg>>8) + 0.114*float64(cb>>8)
+	textCol := color.Black
+	if brightness < 128 {
+		textCol = color.White
+	}
+
 	text := fmt.Sprintf("%d", num)
 	d := &font.Drawer{
 		Dst:  img,
-		Src:  image.NewUniform(col),
+		Src:  image.NewUniform(textCol),
 		Face: basicfont.Face7x13,
-		Dot:  fixed.P(x+4, y+12),
 	}
-	rect := image.Rect(x, y, x+20, y+16)
-	draw.Draw(img, rect, &image.Uniform{color.RGBA{255, 255, 255, 200}}, image.Point{}, draw.Src)
-	draw.Draw(img, rect, &image.Uniform{col}, image.Point{}, draw.Over)
+	w := d.MeasureString(text).Ceil()
+	d.Dot = fixed.P(cx-w/2, cy+4)
 	d.DrawString(text)
 }
 
@@ -352,6 +408,13 @@ func main() {
 		draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
 	}
 
+	// ensure the toolbar is wide enough for the program title
+	d := &font.Drawer{Face: basicfont.Face7x13}
+	titleWidth := d.MeasureString("ShineyShot").Ceil() + 8 // padding
+	if titleWidth > toolbarWidth {
+		toolbarWidth = titleWidth
+	}
+
 	driver.Main(func(s screen.Screen) {
 		width := rgba.Bounds().Dx() + toolbarWidth
 		height := rgba.Bounds().Dy() + tabHeight + bottomHeight
@@ -371,19 +434,23 @@ func main() {
 		}
 		bufIdx := 0
 
-		tabs := []Tab{{Image: rgba, Title: "1"}}
+		tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}}}
 		current := 0
 
 		var drawing bool
 		var cropping bool
+		var moving bool
+		var moveStart image.Point
+		var moveOffset image.Point
 		var last image.Point
 		var cropStart image.Point
 		var cropRect image.Rectangle
 		var message string
 		var messageUntil time.Time
-		nextNumber := 1
+		nextNumber := 0
 		tool := ToolMove
 		colorIdx := 2 // red
+		widthIdx := 0
 
 		col := palette[colorIdx]
 		zoom = fitZoom(rgba, width, height)
@@ -399,24 +466,32 @@ func main() {
 				b := bufs[bufIdx]
 				bufIdx = 1 - bufIdx
 				draw.Draw(b.RGBA(), b.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
-				imgRect := imageRect(tabs[current].Image, width, height)
+				offset := tabs[current].Offset
+				imgRect := image.Rect(
+					toolbarWidth+offset.X,
+					tabHeight+offset.Y,
+					toolbarWidth+offset.X+width,
+					tabHeight+offset.Y+height,
+				)
+				imgRect := imageRect(tabs[current].Image, , )
 				xdraw.NearestNeighbor.Scale(b.RGBA(), imgRect, tabs[current].Image, tabs[current].Image.Bounds(), draw.Src, nil)
 				if tool == ToolCrop && (cropping || !cropRect.Empty()) {
 					r := cropRect
 					if cropping {
 						r = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(r)
 					}
+          r = r.Add(image.Pt(toolbarWidth, tabHeight))
 					x0 := imgRect.Min.X + int(float64(r.Min.X)*zoom)
 					y0 := imgRect.Min.Y + int(float64(r.Min.Y)*zoom)
 					x1 := imgRect.Min.X + int(float64(r.Max.X)*zoom)
 					y1 := imgRect.Min.Y + int(float64(r.Max.Y)*zoom)
-					drawLine(b.RGBA(), x0, y0, x1, y0, color.Black)
-					drawLine(b.RGBA(), x0, y0, x0, y1, color.Black)
-					drawLine(b.RGBA(), x1, y0, x1, y1, color.Black)
-					drawLine(b.RGBA(), x0, y1, x1, y1, color.Black)
+					drawLine(b.RGBA(), x0, y0, x1, y0, color.Black,1 )
+					drawLine(b.RGBA(), x0, y0, x0, y1, color.Black,1 )
+					drawLine(b.RGBA(), x1, y0, x1, y1, color.Black,1 )
+					drawLine(b.RGBA(), x0, y1, x1, y1, color.Black,1 )
 				}
 				drawTabs(b.RGBA(), tabs, current)
-				drawToolbar(b.RGBA(), tool, colorIdx)
+				drawToolbar(b.RGBA(), tool, colorIdx, widthIdx)
 				drawShortcuts(b.RGBA(), width, height)
 				if message != "" && time.Now().Before(messageUntil) {
 					d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
@@ -430,7 +505,7 @@ func main() {
 				w.Publish()
 			case mouse.Event:
 				if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress && int(e.Y) < tabHeight {
-					idx := int((e.X - toolbarWidth)) / 80
+					idx := (int(e.X) - toolbarWidth) / 80
 					if idx >= 0 && idx < len(tabs) {
 						current = idx
 						w.Send(paint.Event{})
@@ -448,14 +523,30 @@ func main() {
 						continue
 					}
 					pos -= 7 * 24
-					colX := (int(e.X) - 4) / 18
-					colY := pos / 18
-					cidx := colY*(toolbarWidth/18) + colX
-					if cidx >= 0 && cidx < len(palette) {
-						colorIdx = cidx
-						col = palette[colorIdx]
-						w.Send(paint.Event{})
-						continue
+					pos -= 4
+					paletteCols := toolbarWidth / 18
+					rows := (len(palette) + paletteCols - 1) / paletteCols
+					paletteHeight := rows * 18
+					if pos >= 0 && pos < paletteHeight {
+						colX := (int(e.X) - 4) / 18
+						colY := pos / 18
+						cidx := colY*paletteCols + colX
+						if cidx >= 0 && cidx < len(palette) {
+							colorIdx = cidx
+							col = palette[colorIdx]
+							w.Send(paint.Event{})
+							continue
+						}
+					}
+					pos -= paletteHeight
+					pos -= 4
+					if (tool == ToolCircle || tool == ToolLine || tool == ToolArrow) && pos >= 0 {
+						widx := pos / 16
+						if widx >= 0 && widx < len(widths) {
+							widthIdx = widx
+							w.Send(paint.Event{})
+							continue
+						}
 					}
 				}
 
@@ -464,11 +555,18 @@ func main() {
 					break
 				}
 
-				mx := int((float64(e.X) - float64(imgRect.Min.X)) / zoom)
-				my := int((float64(e.Y) - float64(imgRect.Min.Y)) / zoom)
+				mx := int((float64(e.X) - float64(imgRect.Min.X + toolbarWidth + tabs[current].Offset.X)) / zoom)
+				my := int((float64(e.Y) - float64(imgRect.Min.Y) +  - tabHeight - tabs[current].Offset.Y) / zoom)
+				if tool != ToolMove && !image.Pt(mx, my).In(tabs[current].Image.Bounds()) {
+					break
+				}
 				if e.Button == mouse.ButtonLeft {
 					if e.Direction == mouse.DirPress {
 						switch tool {
+						case ToolMove:
+							moving = true
+							moveStart = image.Point{int(e.X), int(e.Y)}
+							moveOffset = tabs[current].Offset
 						case ToolCrop:
 							cropping = true
 							cropStart = image.Point{mx, my}
@@ -487,29 +585,42 @@ func main() {
 						if drawing && tool != ToolCrop {
 							switch tool {
 							case ToolDraw:
-								drawLine(tabs[current].Image, last.X, last.Y, mx, my, col)
+								drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, 1)
 							case ToolCircle:
 								r := int(math.Hypot(float64(mx-last.X), float64(my-last.Y)))
-								drawCircle(tabs[current].Image, last.X, last.Y, r, col)
+								drawCircle(tabs[current].Image, last.X, last.Y, r, col, widths[widthIdx])
 							case ToolLine:
-								drawLine(tabs[current].Image, last.X, last.Y, mx, my, col)
+								drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widths[widthIdx])
 							case ToolArrow:
-								drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col)
+								drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col, widths[widthIdx])
 							case ToolNumber:
 								drawNumberBox(tabs[current].Image, mx, my, nextNumber, col)
 								nextNumber++
 							}
 							w.Send(paint.Event{})
 						}
+						if moving && tool == ToolMove {
+							dx := int(e.X) - moveStart.X
+							dy := int(e.Y) - moveStart.Y
+							tabs[current].Offset = moveOffset.Add(image.Pt(dx, dy))
+							w.Send(paint.Event{})
+						}
 						drawing = false
 						cropping = false
+						moving = false
 					}
 				}
 
 				if drawing && tool == ToolDraw && e.Direction == mouse.DirNone {
 					p := image.Point{mx, my}
-					drawLine(tabs[current].Image, last.X, last.Y, p.X, p.Y, col)
+					drawLine(tabs[current].Image, last.X, last.Y, p.X, p.Y, col, 1)
 					last = p
+					w.Send(paint.Event{})
+				}
+				if moving && tool == ToolMove && e.Direction == mouse.DirNone {
+					dx := int(e.X) - moveStart.X
+					dy := int(e.Y) - moveStart.Y
+					tabs[current].Offset = moveOffset.Add(image.Pt(dx, dy))
 					w.Send(paint.Event{})
 				}
 			case key.Event:
@@ -560,7 +671,7 @@ func main() {
 							log.Printf("capture screenshot: %v", err)
 							continue
 						}
-						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1)})
+						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}})
 						current = len(tabs) - 1
 						zoom = fitZoom(tabs[current].Image, width, height)
 						w.Send(paint.Event{})
@@ -579,6 +690,7 @@ func main() {
 					case '\r':
 						if tool == ToolCrop && !cropRect.Empty() {
 							tabs[current].Image = cropImage(tabs[current].Image, cropRect)
+							tabs[current].Offset = image.Point{}
 							cropping = false
 							zoom = fitZoom(tabs[current].Image, width, height)
 							w.Send(paint.Event{})
