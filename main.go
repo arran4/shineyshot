@@ -407,6 +407,8 @@ func ensureCanvasContains(t *Tab, rect image.Rectangle) image.Point {
 	newW := maxX - minX
 	newH := maxY - minY
 	newImg := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	// Fill the expanded canvas with transparency so the checkerboard shows through.
+	draw.Draw(newImg, newImg.Bounds(), image.Transparent, image.Point{}, draw.Src)
 	draw.Draw(newImg, b.Add(image.Pt(-minX, -minY)), t.Image, image.Point{}, draw.Src)
 	t.Image = newImg
 	t.Offset = t.Offset.Add(image.Pt(minX, minY))
