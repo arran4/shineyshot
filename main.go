@@ -119,11 +119,14 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, cropActive bool) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 
 	shortcuts := []string{"N:new", "D:delete", "C:copy", "S:save", "Q:quit"}
+	if tool == ToolCrop && cropActive {
+		shortcuts = append(shortcuts, "Enter:crop", "Ctrl+Enter:new tab", "Esc:cancel")
+	}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
 	for _, sc := range shortcuts {
@@ -473,11 +476,16 @@ func main() {
 					drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
 					for _, hr := range cropHandleRects(r) {
 						draw.Draw(b.RGBA(), hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
+						drawLine(b.RGBA(), hr.Min.X, hr.Min.Y, hr.Max.X-1, hr.Min.Y, color.Black)
+						drawLine(b.RGBA(), hr.Min.X, hr.Min.Y, hr.Min.X, hr.Max.Y-1, color.Black)
+						drawLine(b.RGBA(), hr.Max.X-1, hr.Min.Y, hr.Max.X-1, hr.Max.Y-1, color.Black)
+						drawLine(b.RGBA(), hr.Min.X, hr.Max.Y-1, hr.Max.X-1, hr.Max.Y-1, color.Black)
+						drawDashedRect(b.RGBA(), hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
 					}
 				}
 				drawTabs(b.RGBA(), tabs, current)
 				drawToolbar(b.RGBA(), tool, colorIdx)
-				drawShortcuts(b.RGBA(), width, height)
+				drawShortcuts(b.RGBA(), width, height, tool, !cropRect.Empty())
 				if message != "" && time.Now().Before(messageUntil) {
 					d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
 					w := d.MeasureString(message).Ceil()
@@ -504,9 +512,6 @@ func main() {
 					if idx < 7 {
 						tool = Tool(idx)
 						cropping = false
-						if tool == ToolCrop && cropRect.Empty() {
-							cropRect = tabs[current].Image.Bounds()
-						}
 						w.Send(paint.Event{})
 						continue
 					}
@@ -532,9 +537,6 @@ func main() {
 					if e.Direction == mouse.DirPress {
 						switch tool {
 						case ToolCrop:
-							if cropRect.Empty() {
-								cropRect = tabs[current].Image.Bounds()
-							}
 							p := image.Point{mx, my}
 							action := cropNone
 							for i, hr := range cropHandleRects(cropRect) {
@@ -720,7 +722,13 @@ func main() {
 						w.Send(paint.Event{})
 					case '\r':
 						if tool == ToolCrop && !cropRect.Empty() {
-							tabs[current].Image = cropImage(tabs[current].Image, cropRect)
+							if e.Modifiers&key.ModControl != 0 {
+								img := cropImage(tabs[current].Image, cropRect)
+								tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1)})
+								current = len(tabs) - 1
+							} else {
+								tabs[current].Image = cropImage(tabs[current].Image, cropRect)
+							}
 							cropping = false
 							cropRect = image.Rectangle{}
 							w.Send(paint.Event{})
