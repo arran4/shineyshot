@@ -12,7 +12,9 @@ API on Wayland compositors.
 - Draw annotations with the mouse.
 - Tabbed interface for multiple images.
 - Press **n** to capture a new screenshot in a new tab.
-- Press **s** to save the active tab.
+- Press **d** to delete the current tab.
+- Press **c** to copy the screenshot to the clipboard.
+- Press **s** to save the active tab and show a short confirmation.
 - Press **q** to quit.
 
 ## Requirements
