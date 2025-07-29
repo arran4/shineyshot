@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	imagedraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
@@ -69,6 +70,8 @@ var palette = []color.RGBA{
 	{192, 192, 192, 255},
 	{128, 128, 128, 255},
 }
+
+var zoom float64 = 1.0
 
 func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	// background for title area
@@ -328,6 +331,9 @@ func main() {
 	driver.Main(func(s screen.Screen) {
 		width := rgba.Bounds().Dx() + toolbarWidth
 		height := rgba.Bounds().Dy() + tabHeight + bottomHeight
+		viewW := width - toolbarWidth
+		viewH := height - tabHeight - bottomHeight
+		zoom = math.Min(float64(viewW)/float64(rgba.Bounds().Dx()), float64(viewH)/float64(rgba.Bounds().Dy()))
 		w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height})
 		if err != nil {
 			log.Fatalf("new window: %v", err)
@@ -371,18 +377,23 @@ func main() {
 				b := bufs[bufIdx]
 				bufIdx = 1 - bufIdx
 				draw.Draw(b.RGBA(), b.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
-				imgRect := image.Rect(toolbarWidth, tabHeight, toolbarWidth+tabs[current].Image.Bounds().Dx(), tabHeight+tabs[current].Image.Bounds().Dy())
-				draw.Draw(b.RGBA(), imgRect, tabs[current].Image, image.Point{}, draw.Src)
+				sw := int(float64(tabs[current].Image.Bounds().Dx()) * zoom)
+				sh := int(float64(tabs[current].Image.Bounds().Dy()) * zoom)
+				imgRect := image.Rect(toolbarWidth, tabHeight, toolbarWidth+sw, tabHeight+sh)
+				imagedraw.ApproxBiLinear.Scale(b.RGBA(), imgRect, tabs[current].Image, tabs[current].Image.Bounds(), draw.Src, nil)
 				if tool == ToolCrop && (cropping || !cropRect.Empty()) {
 					r := cropRect
 					if cropping {
 						r = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(r)
 					}
-					r = r.Add(image.Pt(toolbarWidth, tabHeight))
-					drawLine(b.RGBA(), r.Min.X, r.Min.Y, r.Max.X, r.Min.Y, color.Black)
-					drawLine(b.RGBA(), r.Min.X, r.Min.Y, r.Min.X, r.Max.Y, color.Black)
-					drawLine(b.RGBA(), r.Max.X, r.Min.Y, r.Max.X, r.Max.Y, color.Black)
-					drawLine(b.RGBA(), r.Min.X, r.Max.Y, r.Max.X, r.Max.Y, color.Black)
+					r0x := int(float64(r.Min.X)*zoom) + toolbarWidth
+					r0y := int(float64(r.Min.Y)*zoom) + tabHeight
+					r1x := int(float64(r.Max.X)*zoom) + toolbarWidth
+					r1y := int(float64(r.Max.Y)*zoom) + tabHeight
+					drawLine(b.RGBA(), r0x, r0y, r1x, r0y, color.Black)
+					drawLine(b.RGBA(), r0x, r0y, r0x, r1y, color.Black)
+					drawLine(b.RGBA(), r1x, r0y, r1x, r1y, color.Black)
+					drawLine(b.RGBA(), r0x, r1y, r1x, r1y, color.Black)
 				}
 				drawTabs(b.RGBA(), tabs, current)
 				drawToolbar(b.RGBA(), tool, colorIdx)
@@ -428,12 +439,12 @@ func main() {
 					}
 				}
 
-				if int(e.X) < toolbarWidth || int(e.Y) < tabHeight || int(e.Y) > tabHeight+tabs[current].Image.Bounds().Dy() {
+				if int(e.X) < toolbarWidth || int(e.Y) < tabHeight || int(e.X) > toolbarWidth+int(float64(tabs[current].Image.Bounds().Dx())*zoom) || int(e.Y) > tabHeight+int(float64(tabs[current].Image.Bounds().Dy())*zoom) {
 					break
 				}
 
-				mx := int(e.X) - toolbarWidth
-				my := int(e.Y) - tabHeight
+				mx := int(float64(int(e.X)-toolbarWidth) / zoom)
+				my := int(float64(int(e.Y)-tabHeight) / zoom)
 				if e.Button == mouse.ButtonLeft {
 					if e.Direction == mouse.DirPress {
 						switch tool {
@@ -530,6 +541,15 @@ func main() {
 						}
 						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1)})
 						current = len(tabs) - 1
+						w.Send(paint.Event{})
+					case '+':
+						zoom *= 1.2
+						w.Send(paint.Event{})
+					case '-':
+						zoom /= 1.2
+						if zoom < 0.1 {
+							zoom = 0.1
+						}
 						w.Send(paint.Event{})
 					case '\r':
 						if tool == ToolCrop && !cropRect.Empty() {
