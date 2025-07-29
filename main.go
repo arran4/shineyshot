@@ -16,11 +16,19 @@ import (
 
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 	"golang.org/x/mobile/event/key"
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/mouse"
 	"golang.org/x/mobile/event/paint"
 )
+
+const tabHeight = 30
+
+var tabs = []string{"Brush", "Rect"}
+var activeTab int
 
 func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
 	dx := math.Abs(float64(x1 - x0))
@@ -50,6 +58,54 @@ func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
 			err += dx
 			y0 += sy
 		}
+	}
+}
+
+func drawRect(img *image.RGBA, x0, y0, x1, y1 int, col color.Color) {
+	if x0 > x1 {
+		x0, x1 = x1, x0
+	}
+	if y0 > y1 {
+		y0, y1 = y1, y0
+	}
+	for x := x0; x <= x1; x++ {
+		if image.Pt(x, y0).In(img.Bounds()) {
+			img.Set(x, y0, col)
+		}
+		if image.Pt(x, y1).In(img.Bounds()) {
+			img.Set(x, y1, col)
+		}
+	}
+	for y := y0; y <= y1; y++ {
+		if image.Pt(x0, y).In(img.Bounds()) {
+			img.Set(x0, y, col)
+		}
+		if image.Pt(x1, y).In(img.Bounds()) {
+			img.Set(x1, y, col)
+		}
+	}
+}
+
+func drawString(img *image.RGBA, x, y int, s string) {
+	d := &font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(color.Black),
+		Face: basicfont.Face7x13,
+		Dot:  fixed.P(x, y+13),
+	}
+	d.DrawString(s)
+}
+
+func drawTabs(img *image.RGBA) {
+	tabWidth := img.Bounds().Dx() / len(tabs)
+	for i, t := range tabs {
+		r := image.Rect(i*tabWidth, 0, (i+1)*tabWidth, tabHeight)
+		bg := color.RGBA{230, 230, 230, 255}
+		if i == activeTab {
+			bg = color.RGBA{200, 200, 200, 255}
+		}
+		draw.Draw(img, r, &image.Uniform{bg}, image.Point{}, draw.Src)
+		drawString(img, i*tabWidth+5, 5, t)
 	}
 }
 
@@ -135,12 +191,12 @@ func main() {
 	}
 
 	driver.Main(func(s screen.Screen) {
-		w, err := s.NewWindow(&screen.NewWindowOptions{Width: rgba.Bounds().Dx(), Height: rgba.Bounds().Dy()})
+		w, err := s.NewWindow(&screen.NewWindowOptions{Width: rgba.Bounds().Dx(), Height: rgba.Bounds().Dy() + tabHeight})
 		if err != nil {
 			log.Fatalf("new window: %v", err)
 		}
 		defer w.Release()
-		b, err := s.NewBuffer(rgba.Bounds().Size())
+		b, err := s.NewBuffer(image.Point{X: rgba.Bounds().Dx(), Y: rgba.Bounds().Dy() + tabHeight})
 		if err != nil {
 			log.Fatalf("new buffer: %v", err)
 		}
@@ -158,23 +214,51 @@ func main() {
 					return
 				}
 			case paint.Event:
-				draw.Draw(b.RGBA(), b.Bounds(), rgba, image.Point{}, draw.Src)
+				draw.Draw(b.RGBA(), b.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
+				drawTabs(b.RGBA())
+				draw.Draw(b.RGBA(), image.Rect(0, tabHeight, rgba.Bounds().Dx(), rgba.Bounds().Dy()+tabHeight), rgba, image.Point{}, draw.Src)
 				w.Upload(image.Point{}, b, b.Bounds())
 				w.Publish()
 			case mouse.Event:
-				if e.Button == mouse.ButtonLeft {
-					if e.Direction == mouse.DirPress {
-						drawing = true
-						last = image.Point{int(e.X), int(e.Y)}
-					} else if e.Direction == mouse.DirRelease {
-						drawing = false
+				if e.Y < tabHeight {
+					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+						tabWidth := rgba.Bounds().Dx() / len(tabs)
+						idx := int(e.X) / tabWidth
+						if idx >= 0 && idx < len(tabs) {
+							activeTab = idx
+							w.Send(paint.Event{})
+						}
 					}
+					break
 				}
-				if drawing && e.Direction == mouse.DirNone {
-					p := image.Point{int(e.X), int(e.Y)}
-					drawLine(rgba, last.X, last.Y, p.X, p.Y, col)
-					last = p
-					w.Send(paint.Event{})
+				y := int(e.Y) - tabHeight
+				if activeTab == 0 { // Brush
+					if e.Button == mouse.ButtonLeft {
+						if e.Direction == mouse.DirPress {
+							drawing = true
+							last = image.Point{int(e.X), y}
+						} else if e.Direction == mouse.DirRelease {
+							drawing = false
+						}
+					}
+					if drawing && e.Direction == mouse.DirNone {
+						p := image.Point{int(e.X), y}
+						drawLine(rgba, last.X, last.Y, p.X, p.Y, col)
+						last = p
+						w.Send(paint.Event{})
+					}
+				} else if activeTab == 1 { // Rect
+					if e.Button == mouse.ButtonLeft {
+						if e.Direction == mouse.DirPress {
+							drawing = true
+							last = image.Point{int(e.X), y}
+						} else if e.Direction == mouse.DirRelease {
+							drawing = false
+							p := image.Point{int(e.X), y}
+							drawRect(rgba, last.X, last.Y, p.X, p.Y, col)
+							w.Send(paint.Event{})
+						}
+					}
 				}
 			case key.Event:
 				if e.Direction == key.DirPress {
