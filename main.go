@@ -307,23 +307,39 @@ func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
 	}
 }
 
-func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
+func drawCircleThin(img *image.RGBA, cx, cy, r int, col color.Color) {
 	x := r
 	y := 0
-	err := 0
+	err := 1 - r
 	for x >= y {
 		pts := [][2]int{{x, y}, {y, x}, {-y, x}, {-x, y}, {-x, -y}, {-y, -x}, {y, -x}, {x, -y}}
 		for _, p := range pts {
 			px := cx + p[0]
 			py := cy + p[1]
-			setThickPixel(img, px, py, thick, col)
+			if image.Pt(px, py).In(img.Bounds()) {
+				img.Set(px, py, col)
+			}
 		}
 		y++
-		if err <= 0 {
+		if err < 0 {
 			err += 2*y + 1
 		} else {
 			x--
-			err -= 2*x + 1
+			err += 2 * (y - x + 1)
+		}
+	}
+}
+
+func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
+	if thick <= 0 {
+		drawCircleThin(img, cx, cy, r, col)
+		return
+	}
+	start := -thick / 2
+	for i := 0; i < thick; i++ {
+		rr := r + start + i
+		if rr >= 0 {
+			drawCircleThin(img, cx, cy, rr, col)
 		}
 	}
 }
