@@ -48,6 +48,7 @@ const (
 	ToolCircle
 	ToolLine
 	ToolArrow
+	ToolRect
 	ToolNumber
 	ToolText
 )
@@ -269,7 +270,7 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 
 func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 	y := tabHeight
-	tools := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "H:Num", "T:Text"}
+	tools := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "Rect", "H:Num", "T:Text"}
 	toolRects = toolRects[:0]
 	for i, name := range tools {
 		c := color.RGBA{200, 200, 200, 255}
@@ -311,7 +312,7 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 		}
 	}
 
-	if tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow {
+	if tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow || tool == ToolRect {
 		y += 4
 		col := palette[colIdx]
 		widthRects = widthRects[:0]
@@ -418,23 +419,39 @@ func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
 	}
 }
 
-func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
+func drawCircleThin(img *image.RGBA, cx, cy, r int, col color.Color) {
 	x := r
 	y := 0
-	err := 0
+	err := 1 - r
 	for x >= y {
 		pts := [][2]int{{x, y}, {y, x}, {-y, x}, {-x, y}, {-x, -y}, {-y, -x}, {y, -x}, {x, -y}}
 		for _, p := range pts {
 			px := cx + p[0]
 			py := cy + p[1]
-			setThickPixel(img, px, py, thick, col)
+			if image.Pt(px, py).In(img.Bounds()) {
+				img.Set(px, py, col)
+			}
 		}
 		y++
-		if err <= 0 {
+		if err < 0 {
 			err += 2*y + 1
 		} else {
 			x--
-			err -= 2*x + 1
+			err += 2 * (y - x + 1)
+		}
+	}
+}
+
+func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
+	if thick <= 0 {
+		drawCircleThin(img, cx, cy, r, col)
+		return
+	}
+	start := -thick / 2
+	for i := 0; i < thick; i++ {
+		rr := r + start + i
+		if rr >= 0 {
+			drawCircleThin(img, cx, cy, rr, col)
 		}
 	}
 }
@@ -1017,7 +1034,7 @@ func main() {
 					}
 					pos -= paletteHeight
 					pos -= 4
-					if (tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow) && pos >= 0 {
+					if (tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow || tool == ToolRect) && pos >= 0 {
 						widx := pos / 16
 						if widx >= 0 && widx < len(widths) {
 							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
@@ -1114,7 +1131,7 @@ func main() {
 						case ToolDraw:
 							drawing = true
 							last = image.Point{mx, my}
-						case ToolCircle, ToolLine, ToolArrow, ToolNumber:
+						case ToolCircle, ToolLine, ToolArrow, ToolRect, ToolNumber:
 							drawing = true
 							last = image.Point{mx, my}
 						case ToolText:
@@ -1237,6 +1254,27 @@ func main() {
 								mx -= shift.X
 								my -= shift.Y
 								drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
+							case ToolRect:
+								minX, minY := last.X, last.Y
+								maxX, maxY := mx, my
+								if mx < minX {
+									minX = mx
+								}
+								if my < minY {
+									minY = my
+								}
+								if last.X > maxX {
+									maxX = last.X
+								}
+								if last.Y > maxY {
+									maxY = last.Y
+								}
+								br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+								shift := ensureCanvasContains(&tabs[current], br)
+								last = last.Sub(shift)
+								mx -= shift.X
+								my -= shift.Y
+								drawRect(tabs[current].Image, image.Rect(last.X, last.Y, mx, my), col, widths[tabs[current].WidthIdx])
 							case ToolNumber:
 								s := numberSizes[numberIdx]
 								br := image.Rect(mx-s, my-s, mx+s, my+s)
