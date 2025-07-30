@@ -238,11 +238,11 @@ var _ Button = (*CacheButton)(nil)
 func (cb *CacheButton) Draw(dst *image.RGBA, state ButtonState) {
 	if cb.cache[state] == nil {
 		rect := cb.Button.Rect()
-		img := image.NewRGBA(image.Rect(0, 0, rect.Dx(), rect.Dy()))
+		img := image.NewRGBA(rect)
 		cb.Button.Draw(img, state)
 		cb.cache[state] = img
 	}
-	draw.Draw(dst, cb.Button.Rect(), cb.cache[state], image.Point{}, draw.Src)
+	draw.Draw(dst, cb.Button.Rect(), cb.cache[state], cb.Button.Rect().Min, draw.Src)
 }
 
 func (cb *CacheButton) Rect() image.Rectangle { return cb.Button.Rect() }
@@ -473,9 +473,11 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
+	meas := &font.Drawer{Face: basicfont.Face7x13}
 	for i := range shortcuts {
 		sc := &shortcuts[i]
-		sc.SetRect(image.Rect(x-2, y-14, x+2, y+4))
+		w := meas.MeasureString(sc.label).Ceil()
+		sc.SetRect(image.Rect(x-2, y-14, x+w+2, y+4))
 		state := StateDefault
 		if i == hoverShortcut {
 			state = StateHover
