@@ -215,20 +215,44 @@ type Button interface {
 	Activate()
 }
 
+// CacheButton wraps another Button and caches its rendered states.
+// It delegates all interface methods to the wrapped Button while
+// caching the result of Draw for each state.
+type CacheButton struct {
+	Button
+	cache [3]*image.RGBA
+}
+
+var _ Button = (*CacheButton)(nil)
+
+func (cb *CacheButton) Draw(dst *image.RGBA, state ButtonState) {
+	if cb.cache[state] == nil {
+		rect := cb.Button.Rect()
+		img := image.NewRGBA(image.Rect(0, 0, rect.Dx(), rect.Dy()))
+		cb.Button.Draw(img, state)
+		cb.cache[state] = img
+	}
+	draw.Draw(dst, cb.Button.Rect(), cb.cache[state], image.Point{}, draw.Src)
+}
+
+func (cb *CacheButton) Rect() image.Rectangle { return cb.Button.Rect() }
+
+func (cb *CacheButton) SetRect(r image.Rectangle) {
+	if r != cb.Button.Rect() {
+		cb.Button.SetRect(r)
+		cb.cache = [3]*image.RGBA{}
+	}
+}
+
+func (cb *CacheButton) Activate() { cb.Button.Activate() }
+
 type Shortcut struct {
 	label  string
 	action func()
 	rect   image.Rectangle
-	cache  [3]*image.RGBA
 }
 
-func (s *Shortcut) ensure(state ButtonState) {
-	if s.cache[state] != nil {
-		return
-	}
-	d := &font.Drawer{Face: basicfont.Face7x13}
-	w := d.MeasureString(s.label).Ceil() + 6
-	img := image.NewRGBA(image.Rect(0, 0, w, 18))
+func (s *Shortcut) Draw(dst *image.RGBA, state ButtonState) {
 	col := color.RGBA{200, 200, 200, 255}
 	switch state {
 	case StateHover:
@@ -236,18 +260,11 @@ func (s *Shortcut) ensure(state ButtonState) {
 	case StatePressed:
 		col = color.RGBA{150, 150, 150, 255}
 	}
-	draw.Draw(img, img.Bounds(), &image.Uniform{col}, image.Point{}, draw.Src)
-	drawRect(img, img.Bounds(), color.Black, 1)
-	d.Dst = img
-	d.Src = image.Black
-	d.Dot = fixed.P(2, 14)
+	draw.Draw(dst, s.rect, &image.Uniform{col}, image.Point{}, draw.Src)
+	drawRect(dst, s.rect, color.Black, 1)
+	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+		Dot: fixed.P(s.rect.Min.X+2, s.rect.Min.Y+14)}
 	d.DrawString(s.label)
-	s.cache[state] = img
-}
-
-func (s *Shortcut) Draw(dst *image.RGBA, state ButtonState) {
-	s.ensure(state)
-	draw.Draw(dst, s.rect, s.cache[state], image.Point{}, draw.Src)
 }
 
 func (s *Shortcut) Rect() image.Rectangle { return s.rect }
@@ -255,7 +272,6 @@ func (s *Shortcut) Rect() image.Rectangle { return s.rect }
 func (s *Shortcut) SetRect(r image.Rectangle) {
 	if r != s.rect {
 		s.rect = r
-		s.cache = [3]*image.RGBA{}
 	}
 }
 func (s *Shortcut) Activate() {
@@ -270,16 +286,11 @@ type ToolButton struct {
 	tool  Tool
 	atype actionType
 	rect  image.Rectangle
-	cache [3]*image.RGBA
 	// onSelect is called when the button is activated.
 	onSelect func()
 }
 
-func (tb *ToolButton) ensure(state ButtonState) {
-	if tb.cache[state] != nil {
-		return
-	}
-	img := image.NewRGBA(image.Rect(0, 0, tb.rect.Dx(), tb.rect.Dy()))
+func (tb *ToolButton) Draw(dst *image.RGBA, state ButtonState) {
 	c := color.RGBA{200, 200, 200, 255}
 	switch state {
 	case StateHover:
@@ -287,15 +298,10 @@ func (tb *ToolButton) ensure(state ButtonState) {
 	case StatePressed:
 		c = color.RGBA{150, 150, 150, 255}
 	}
-	draw.Draw(img, img.Bounds(), &image.Uniform{c}, image.Point{}, draw.Src)
-	d := &font.Drawer{Dst: img, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, 16)}
+	draw.Draw(dst, tb.rect, &image.Uniform{c}, image.Point{}, draw.Src)
+	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+		Dot: fixed.P(tb.rect.Min.X+4, tb.rect.Min.Y+16)}
 	d.DrawString(tb.label)
-	tb.cache[state] = img
-}
-
-func (tb *ToolButton) Draw(dst *image.RGBA, state ButtonState) {
-	tb.ensure(state)
-	draw.Draw(dst, tb.rect, tb.cache[state], image.Point{}, draw.Src)
 }
 
 func (tb *ToolButton) Rect() image.Rectangle { return tb.rect }
@@ -303,7 +309,6 @@ func (tb *ToolButton) Rect() image.Rectangle { return tb.rect }
 func (tb *ToolButton) SetRect(r image.Rectangle) {
 	if r != tb.rect {
 		tb.rect = r
-		tb.cache = [3]*image.RGBA{}
 	}
 }
 func (tb *ToolButton) Activate() {
@@ -313,7 +318,8 @@ func (tb *ToolButton) Activate() {
 }
 
 func actionOfTool(t Tool) actionType {
-	for _, tb := range toolButtons {
+	for _, cb := range toolButtons {
+		tb := cb.Button.(*ToolButton)
 		if tb.tool == t {
 			return tb.atype
 		}
@@ -334,7 +340,7 @@ var shortcutRects []Shortcut
 var hoverShortcut = -1
 
 var tabButtons []TabButton
-var toolButtons []*ToolButton
+var toolButtons []*CacheButton
 var paletteRects []image.Rectangle
 var widthRects []image.Rectangle
 var numberRects []image.Rectangle
@@ -353,15 +359,10 @@ var hoverTextSize = -1
 type TabButton struct {
 	label    string
 	rect     image.Rectangle
-	cache    [3]*image.RGBA
 	onSelect func()
 }
 
-func (tb *TabButton) ensure(state ButtonState) {
-	if tb.cache[state] != nil {
-		return
-	}
-	img := image.NewRGBA(image.Rect(0, 0, tb.rect.Dx(), tb.rect.Dy()))
+func (tb *TabButton) Draw(dst *image.RGBA, state ButtonState) {
 	c := color.RGBA{200, 200, 200, 255}
 	switch state {
 	case StateHover:
@@ -369,15 +370,10 @@ func (tb *TabButton) ensure(state ButtonState) {
 	case StatePressed:
 		c = color.RGBA{150, 150, 150, 255}
 	}
-	draw.Draw(img, img.Bounds(), &image.Uniform{c}, image.Point{}, draw.Src)
-	d := &font.Drawer{Dst: img, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, 16)}
+	draw.Draw(dst, tb.rect, &image.Uniform{c}, image.Point{}, draw.Src)
+	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+		Dot: fixed.P(tb.rect.Min.X+4, tb.rect.Min.Y+16)}
 	d.DrawString(tb.label)
-	tb.cache[state] = img
-}
-
-func (tb *TabButton) Draw(dst *image.RGBA, state ButtonState) {
-	tb.ensure(state)
-	draw.Draw(dst, tb.rect, tb.cache[state], image.Point{}, draw.Src)
 }
 
 func (tb *TabButton) Rect() image.Rectangle { return tb.rect }
@@ -385,7 +381,6 @@ func (tb *TabButton) Rect() image.Rectangle { return tb.rect }
 func (tb *TabButton) SetRect(r image.Rectangle) {
 	if r != tb.rect {
 		tb.rect = r
-		tb.cache = [3]*image.RGBA{}
 	}
 }
 
@@ -480,16 +475,17 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 
 func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 	y := tabHeight
-	for i, tb := range toolButtons {
+	for i, cb := range toolButtons {
 		r := image.Rect(0, y, toolbarWidth, y+24)
-		tb.SetRect(r)
+		cb.SetRect(r)
+		tb := cb.Button.(*ToolButton)
 		state := StateDefault
 		if tb.tool == tool {
 			state = StatePressed
 		} else if i == hoverTool {
 			state = StateHover
 		}
-		tb.Draw(dst, state)
+		cb.Draw(dst, state)
 		y += 24
 	}
 
@@ -1098,18 +1094,19 @@ func main() {
 		col := palette[colorIdx]
 		tabs[current].Zoom = fitZoom(rgba, width, height)
 
-		toolButtons = []*ToolButton{
-			{label: "M:Move", tool: ToolMove, atype: actionMove},
-			{label: "R:Crop", tool: ToolCrop, atype: actionCrop},
-			{label: "B:Draw", tool: ToolDraw, atype: actionDraw},
-			{label: "O:Circle", tool: ToolCircle, atype: actionDraw},
-			{label: "L:Line", tool: ToolLine, atype: actionDraw},
-			{label: "A:Arrow", tool: ToolArrow, atype: actionDraw},
-			{label: "X:Rect", tool: ToolRect, atype: actionDraw},
-			{label: "H:Num", tool: ToolNumber, atype: actionDraw},
-			{label: "T:Text", tool: ToolText, atype: actionNone},
+		toolButtons = []*CacheButton{
+			{Button: &ToolButton{label: "M:Move", tool: ToolMove, atype: actionMove}},
+			{Button: &ToolButton{label: "R:Crop", tool: ToolCrop, atype: actionCrop}},
+			{Button: &ToolButton{label: "B:Draw", tool: ToolDraw, atype: actionDraw}},
+			{Button: &ToolButton{label: "O:Circle", tool: ToolCircle, atype: actionDraw}},
+			{Button: &ToolButton{label: "L:Line", tool: ToolLine, atype: actionDraw}},
+			{Button: &ToolButton{label: "A:Arrow", tool: ToolArrow, atype: actionDraw}},
+			{Button: &ToolButton{label: "X:Rect", tool: ToolRect, atype: actionDraw}},
+			{Button: &ToolButton{label: "H:Num", tool: ToolNumber, atype: actionDraw}},
+			{Button: &ToolButton{label: "T:Text", tool: ToolText, atype: actionNone}},
 		}
-		for _, tb := range toolButtons {
+		for _, cb := range toolButtons {
+			tb := cb.Button.(*ToolButton)
 			t := tb
 			tb.onSelect = func() {
 				tool = t.tool
