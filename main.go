@@ -7,6 +7,8 @@ import (
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 	"image"
 	"image/color"
@@ -47,6 +49,7 @@ const (
 	ToolLine
 	ToolArrow
 	ToolNumber
+	ToolText
 )
 
 type Tab struct {
@@ -98,6 +101,24 @@ var palette = []color.RGBA{
 var checkerLight = color.RGBA{220, 220, 220, 255}
 var checkerDark = color.RGBA{192, 192, 192, 255}
 
+var textSizes = []float64{12, 16, 20, 24, 32}
+var textFaces []font.Face
+var textSizeIdx int
+
+func init() {
+	f, err := opentype.Parse(goregular.TTF)
+	if err != nil {
+		log.Fatalf("parse font: %v", err)
+	}
+	for _, sz := range textSizes {
+		face, err := opentype.NewFace(f, &opentype.FaceOptions{Size: sz, DPI: 72, Hinting: font.HintingFull})
+		if err != nil {
+			log.Fatalf("font face: %v", err)
+		}
+		textFaces = append(textFaces, face)
+	}
+}
+
 func fitZoom(img *image.RGBA, winW, winH int) float64 {
 	availW := winW - toolbarWidth
 	availH := winH - tabHeight - bottomHeight
@@ -137,6 +158,28 @@ func drawCheckerboard(dst *image.RGBA, rect image.Rectangle, size int, light, da
 var widths = []int{1, 2, 4, 6, 8}
 var numberSizes = []int{8, 12, 16, 20, 24}
 
+type Shortcut struct {
+	label  string
+	action string
+	rect   image.Rectangle
+}
+
+var shortcutRects []Shortcut
+var hoverShortcut = -1
+
+var tabRects []image.Rectangle
+var toolRects []image.Rectangle
+var paletteRects []image.Rectangle
+var widthRects []image.Rectangle
+var numberRects []image.Rectangle
+var textSizeRects []image.Rectangle
+var hoverTab = -1
+var hoverTool = -1
+var hoverPalette = -1
+var hoverWidth = -1
+var hoverNumber = -1
+var hoverTextSize = -1
+
 func numberBoxHeight(size int) int {
 	h := 2*size + 4
 	if h < 16 {
@@ -155,11 +198,14 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		Dot: fixed.P(4, 16)}
 	title.DrawString("ShineyShot")
 
+	tabRects = tabRects[:0]
 	x := toolbarWidth
 	for i, t := range tabs {
 		col := color.RGBA{200, 200, 200, 255}
 		if i == current {
 			col = color.RGBA{150, 150, 150, 255}
+		} else if i == hoverTab {
+			col = color.RGBA{180, 180, 180, 255}
 		}
 		rect := image.Rect(x, 0, x+80, tabHeight)
 		draw.Draw(dst, rect, &image.Uniform{col}, image.Point{}, draw.Src)
@@ -170,6 +216,7 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 			Dot:  fixed.P(x+4, 16),
 		}
 		d.DrawString(t.Title)
+		tabRects = append(tabRects, rect)
 		x += 80
 	}
 	// fill remainder of bar
@@ -177,44 +224,78 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, z float64) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
+	shortcutRects = shortcutRects[:0]
 	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", z*100)
-	shortcuts := []string{"N:new", zoomStr, "D:delete", "C:copy", "S:save", "Q:quit"}
-	if tool == ToolCrop {
-		shortcuts = append(shortcuts, "Enter:crop", "Ctrl+Enter:new tab", "Esc:cancel")
+	var shortcuts []Shortcut
+	if textMode {
+		shortcuts = []Shortcut{{label: "Enter:place", action: "textdone"}, {label: "Esc:cancel", action: "textcancel"}}
+	} else {
+		shortcuts = []Shortcut{
+			{label: "^N:capture", action: "capture"},
+			{label: "^U:dup", action: "dup"},
+			{label: "^V:paste", action: "paste"},
+			{label: zoomStr, action: "zoom"},
+			{label: "^D:delete", action: "delete"},
+			{label: "^C:copy image", action: "copy"},
+			{label: "^S:save", action: "save"},
+			{label: "Q:quit", action: "quit"},
+		}
+		if tool == ToolCrop {
+			shortcuts = append(shortcuts, Shortcut{label: "Enter:crop", action: "crop"}, Shortcut{label: "Ctrl+Enter:new tab", action: "croptab"}, Shortcut{label: "Esc:cancel", action: "cropcancel"})
+		}
 	}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
-	for _, sc := range shortcuts {
-		d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(x, y)}
-		d.DrawString(sc)
-		x += d.MeasureString(sc).Ceil() + 20
+	for i, sc := range shortcuts {
+		d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13}
+		w := d.MeasureString(sc.label).Ceil() + 6
+		btn := image.Rect(x-2, y-14, x+w-2, y+4)
+		col := color.RGBA{200, 200, 200, 255}
+		if i == hoverShortcut {
+			col = color.RGBA{180, 180, 180, 255}
+		}
+		draw.Draw(dst, btn, &image.Uniform{col}, image.Point{}, draw.Src)
+		drawRect(dst, btn, color.Black, 1)
+		d.Dot = fixed.P(x, y)
+		d.DrawString(sc.label)
+		sc.rect = btn
+		shortcutRects = append(shortcutRects, sc)
+		x += w + 8
 	}
 }
 
 func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 	y := tabHeight
-	tools := []string{"Move", "Crop", "Draw", "Circle", "Line", "Arrow", "Num"}
+	tools := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "H:Num", "T:Text"}
+	toolRects = toolRects[:0]
 	for i, name := range tools {
 		c := color.RGBA{200, 200, 200, 255}
 		if Tool(i) == tool {
 			c = color.RGBA{150, 150, 150, 255}
+		} else if i == hoverTool {
+			c = color.RGBA{180, 180, 180, 255}
 		}
 		rect := image.Rect(0, y, toolbarWidth, y+24)
 		draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
 		d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, y+16)}
 		d.DrawString(name)
+		toolRects = append(toolRects, rect)
 		y += 24
 	}
 
 	// color palette below tools
 	y += 4
 	x := 4
+	paletteRects = paletteRects[:0]
 	for i, p := range palette {
 		rect := image.Rect(x, y, x+16, y+16)
 		draw.Draw(dst, rect, &image.Uniform{p}, image.Point{}, draw.Src)
+		if i == hoverPalette {
+			draw.Draw(dst, rect, &image.Uniform{color.RGBA{255, 255, 255, 80}}, image.Point{}, draw.Over)
+		}
 		if i == colIdx {
 			draw.Draw(dst, rect, &image.Uniform{color.RGBA{0, 0, 0, 0}}, image.Point{}, draw.Over)
 			drawLine(dst, rect.Min.X, rect.Min.Y, rect.Max.X-1, rect.Min.Y, color.White, 1)
@@ -222,6 +303,7 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 			drawLine(dst, rect.Max.X-1, rect.Min.Y, rect.Max.X-1, rect.Max.Y-1, color.White, 1)
 			drawLine(dst, rect.Min.X, rect.Max.Y-1, rect.Max.X-1, rect.Max.Y-1, color.White, 1)
 		}
+		paletteRects = append(paletteRects, rect)
 		x += 18
 		if x+16 > toolbarWidth {
 			x = 4
@@ -232,35 +314,64 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 	if tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow {
 		y += 4
 		col := palette[colIdx]
+		widthRects = widthRects[:0]
 		for i, w := range widths {
 			rect := image.Rect(0, y, toolbarWidth, y+16)
 			c := color.RGBA{200, 200, 200, 255}
 			if i == widthIdx {
 				c = color.RGBA{150, 150, 150, 255}
+			} else if i == hoverWidth {
+				c = color.RGBA{180, 180, 180, 255}
 			}
 			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
 			d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, y+12)}
 			d.DrawString(fmt.Sprintf("%d", w))
 			lineY := y + 8
 			drawLine(dst, 30, lineY, toolbarWidth-4, lineY, col, w)
+			widthRects = append(widthRects, rect)
 			y += 16
 		}
 	}
 	if tool == ToolNumber {
 		y += 4
 		col := palette[colIdx]
+		numberRects = numberRects[:0]
 		for i, s := range numberSizes {
 			h := numberBoxHeight(s)
 			rect := image.Rect(0, y, toolbarWidth, y+h)
 			c := color.RGBA{200, 200, 200, 255}
 			if i == numberIdx {
 				c = color.RGBA{150, 150, 150, 255}
+			} else if i == hoverNumber {
+				c = color.RGBA{180, 180, 180, 255}
 			}
 			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
 			d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, y+12)}
 			d.DrawString(fmt.Sprintf("%d", s))
 			drawFilledCircle(dst, (toolbarWidth+30)/2, y+h/2, s, col)
+			numberRects = append(numberRects, rect)
 			y += h
+		}
+	}
+	if tool == ToolText {
+		y += 4
+		col := palette[colIdx]
+		textSizeRects = textSizeRects[:0]
+		for i, face := range textFaces {
+			rect := image.Rect(0, y, toolbarWidth, y+24)
+			c := color.RGBA{200, 200, 200, 255}
+			if i == textSizeIdx {
+				c = color.RGBA{150, 150, 150, 255}
+			} else if i == hoverTextSize {
+				c = color.RGBA{180, 180, 180, 255}
+			}
+			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
+			d := &font.Drawer{Dst: dst, Src: image.NewUniform(col), Face: face}
+			baseline := y + face.Metrics().Ascent.Ceil()
+			d.Dot = fixed.P(4, baseline)
+			d.DrawString("Ab3")
+			textSizeRects = append(textSizeRects, rect)
+			y += 24
 		}
 	}
 }
@@ -634,12 +745,112 @@ func main() {
 		var cropRect image.Rectangle
 		var message string
 		var messageUntil time.Time
+		var confirmDelete bool
+		var textInputActive bool
+		var textInput string
+		var textPos image.Point
 		tool := ToolMove
 		colorIdx := 2 // red
 		numberIdx := 0
 
 		col := palette[colorIdx]
 		tabs[current].Zoom = fitZoom(rgba, width, height)
+
+		handleShortcut := func(action string) {
+			switch action {
+			case "capture":
+				img, err := captureScreenshot()
+				if err != nil {
+					log.Printf("capture screenshot: %v", err)
+					return
+				}
+				tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
+				current = len(tabs) - 1
+				tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
+				message = "captured screenshot"
+				messageUntil = time.Now().Add(2 * time.Second)
+			case "dup":
+				dup := image.NewRGBA(tabs[current].Image.Bounds())
+				draw.Draw(dup, dup.Bounds(), tabs[current].Image, image.Point{}, draw.Src)
+				tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx})
+				current = len(tabs) - 1
+			case "paste":
+				out, err := exec.Command("wl-paste", "--no-newline", "--type", "image/png").Output()
+				if err != nil {
+					log.Printf("paste: %v", err)
+					return
+				}
+				img, err := png.Decode(bytes.NewReader(out))
+				if err != nil {
+					log.Printf("paste decode: %v", err)
+					return
+				}
+				rgba := image.NewRGBA(img.Bounds())
+				draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
+				tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
+				current = len(tabs) - 1
+				message = "pasted new tab"
+				messageUntil = time.Now().Add(2 * time.Second)
+			case "delete":
+				if len(tabs) > 1 {
+					tabs = append(tabs[:current], tabs[current+1:]...)
+					if current >= len(tabs) {
+						current = len(tabs) - 1
+					}
+				}
+			case "copy":
+				var buf bytes.Buffer
+				png.Encode(&buf, tabs[current].Image)
+				cmd := exec.Command("wl-copy", "--type", "image/png")
+				cmd.Stdin = &buf
+				if err := cmd.Run(); err != nil {
+					log.Printf("copy: %v", err)
+				} else {
+					message = "image copied to clipboard"
+					messageUntil = time.Now().Add(2 * time.Second)
+				}
+			case "save":
+				out, err := os.Create(*output)
+				if err != nil {
+					log.Printf("save: %v", err)
+					return
+				}
+				png.Encode(out, tabs[current].Image)
+				out.Close()
+				message = fmt.Sprintf("saved %s", *output)
+				messageUntil = time.Now().Add(2 * time.Second)
+			case "textdone":
+				d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+				d.Dot = fixed.P(textPos.X, textPos.Y)
+				d.DrawString(textInput)
+				textInputActive = false
+			case "textcancel":
+				textInputActive = false
+			case "crop":
+				if tool == ToolCrop && !cropRect.Empty() {
+					cropped := cropImage(tabs[current].Image, cropRect)
+					tabs[current].Image = cropped
+					tabs[current].Offset = tabs[current].Offset.Add(cropRect.Min)
+					cropping = false
+					cropRect = image.Rectangle{}
+				}
+			case "croptab":
+				if tool == ToolCrop && !cropRect.Empty() {
+					cropped := cropImage(tabs[current].Image, cropRect)
+					off := tabs[current].Offset.Add(cropRect.Min)
+					tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
+					current = len(tabs) - 1
+					cropping = false
+					cropRect = image.Rectangle{}
+				}
+			case "cropcancel":
+				if tool == ToolCrop {
+					cropRect = image.Rectangle{}
+					cropping = false
+				}
+			}
+			w.Send(paint.Event{})
+		}
 
 		for {
 			e := w.NextEvent()
@@ -705,7 +916,7 @@ func main() {
 				// UI chrome
 				drawTabs(b.RGBA(), tabs, current)
 				drawToolbar(b.RGBA(), tool, colorIdx, tabs[current].WidthIdx, numberIdx)
-				drawShortcuts(b.RGBA(), width, height, tool, tabs[current].Zoom)
+				drawShortcuts(b.RGBA(), width, height, tool, textInputActive, tabs[current].Zoom)
 
 				// transient message overlay
 				if message != "" && time.Now().Before(messageUntil) {
@@ -713,32 +924,74 @@ func main() {
 					w := d.MeasureString(message).Ceil()
 					px := toolbarWidth + (dst.Dx()-w)/2
 					py := tabHeight + dst.Dy()
-					// position and draw
 					d.Dot = fixed.P(px, py)
 					d.DrawString(message)
+				}
+				// text input overlay
+				if textInputActive {
+					d := &font.Drawer{Dst: b.RGBA(), Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+					px := dst.Min.X + int(float64(textPos.X)*tabs[current].Zoom)
+					py := dst.Min.Y + int(float64(textPos.Y)*tabs[current].Zoom)
+					d.Dot = fixed.P(px, py)
+					d.DrawString(textInput + "|")
 				}
 				w.Upload(image.Point{}, b, b.Bounds())
 				w.Publish()
 			case mouse.Event:
-				if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress && int(e.Y) < tabHeight {
-					idx := (int(e.X) - toolbarWidth) / 80
-					if idx >= 0 && idx < len(tabs) {
-						current = idx
+				if int(e.Y) >= height-bottomHeight {
+					p := image.Point{int(e.X), int(e.Y)}
+					hoverShortcut = -1
+					for i, sc := range shortcutRects {
+						if p.In(sc.rect) {
+							hoverShortcut = i
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								handleShortcut(sc.action)
+							}
+							break
+						}
+					}
+					if e.Direction == mouse.DirNone {
+						w.Send(paint.Event{})
+					}
+					continue
+				}
+				if int(e.Y) < tabHeight {
+					hoverTab = -1
+					p := image.Point{int(e.X), int(e.Y)}
+					for i, r := range tabRects {
+						if p.In(r) {
+							hoverTab = i
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								current = i
+								w.Send(paint.Event{})
+							}
+							break
+						}
+					}
+					if e.Direction == mouse.DirNone {
 						w.Send(paint.Event{})
 					}
 					continue
 				}
 
-				if e.Button == mouse.ButtonLeft && int(e.X) < toolbarWidth && int(e.Y) >= tabHeight {
+				if int(e.X) < toolbarWidth && int(e.Y) >= tabHeight {
 					pos := int(e.Y) - tabHeight
 					idx := pos / 24
-					if idx < 7 {
-						tool = Tool(idx)
-						cropping = false
-						w.Send(paint.Event{})
+					if idx < 8 {
+						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+							tool = Tool(idx)
+							cropping = false
+						}
+						hoverTool = idx
+						if e.Direction == mouse.DirNone {
+							w.Send(paint.Event{})
+						}
+						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+							w.Send(paint.Event{})
+						}
 						continue
 					}
-					pos -= 7 * 24
+					pos -= 8 * 24
 					pos -= 4
 					paletteCols := toolbarWidth / 18
 					rows := (len(palette) + paletteCols - 1) / paletteCols
@@ -748,9 +1001,17 @@ func main() {
 						colY := pos / 18
 						cidx := colY*paletteCols + colX
 						if cidx >= 0 && cidx < len(palette) {
-							colorIdx = cidx
-							col = palette[colorIdx]
-							w.Send(paint.Event{})
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								colorIdx = cidx
+								col = palette[colorIdx]
+							}
+							hoverPalette = cidx
+							if e.Direction == mouse.DirNone {
+								w.Send(paint.Event{})
+							}
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								w.Send(paint.Event{})
+							}
 							continue
 						}
 					}
@@ -759,8 +1020,16 @@ func main() {
 					if (tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow) && pos >= 0 {
 						widx := pos / 16
 						if widx >= 0 && widx < len(widths) {
-							tabs[current].WidthIdx = widx
-							w.Send(paint.Event{})
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								tabs[current].WidthIdx = widx
+							}
+							hoverWidth = widx
+							if e.Direction == mouse.DirNone {
+								w.Send(paint.Event{})
+							}
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								w.Send(paint.Event{})
+							}
 							continue
 						}
 					} else if tool == ToolNumber && pos >= 0 {
@@ -768,13 +1037,44 @@ func main() {
 						for i, s := range numberSizes {
 							h := numberBoxHeight(s)
 							if rem < h {
-								numberIdx = i
-								w.Send(paint.Event{})
+								if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+									numberIdx = i
+								}
+								hoverNumber = i
+								if e.Direction == mouse.DirNone {
+									w.Send(paint.Event{})
+								}
+								if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+									w.Send(paint.Event{})
+								}
 								break
 							}
 							rem -= h
 						}
 						continue
+					} else if tool == ToolText && pos >= 0 {
+						idx := pos / 24
+						if idx >= 0 && idx < len(textFaces) {
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								textSizeIdx = idx
+							}
+							hoverTextSize = idx
+							if e.Direction == mouse.DirNone {
+								w.Send(paint.Event{})
+							}
+							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+								w.Send(paint.Event{})
+							}
+							continue
+						}
+					}
+					if e.Direction == mouse.DirNone {
+						hoverTool = -1
+						hoverPalette = -1
+						hoverWidth = -1
+						hoverNumber = -1
+						hoverTextSize = -1
+						w.Send(paint.Event{})
 					}
 				}
 
@@ -817,6 +1117,15 @@ func main() {
 						case ToolCircle, ToolLine, ToolArrow, ToolNumber:
 							drawing = true
 							last = image.Point{mx, my}
+						case ToolText:
+							if textInputActive {
+								textPos = image.Point{mx, my}
+							} else {
+								textInputActive = true
+								textInput = ""
+								textPos = image.Point{mx, my}
+							}
+							w.Send(paint.Event{})
 						}
 					} else if e.Direction == mouse.DirRelease {
 						if cropping && tool == ToolCrop {
@@ -1021,56 +1330,115 @@ func main() {
 				}
 			case key.Event:
 				if e.Direction == key.DirPress {
-					switch e.Rune {
-					case 's', 'S':
-						out, err := os.Create(*output)
-						if err != nil {
-							log.Printf("save: %v", err)
+					if textInputActive {
+						switch e.Code {
+						case key.CodeReturnEnter:
+							d := &font.Drawer{Face: textFaces[textSizeIdx]}
+							width := d.MeasureString(textInput).Ceil()
+							metrics := textFaces[textSizeIdx].Metrics()
+							br := image.Rect(textPos.X, textPos.Y-metrics.Ascent.Ceil(), textPos.X+width, textPos.Y+metrics.Descent.Ceil())
+							shift := ensureCanvasContains(&tabs[current], br)
+							textPos = textPos.Sub(shift)
+							d = &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+							d.Dot = fixed.P(textPos.X, textPos.Y)
+							d.DrawString(textInput)
+							textInputActive = false
+							w.Send(paint.Event{})
+							continue
+						case key.CodeEscape:
+							textInputActive = false
+							w.Send(paint.Event{})
+							continue
+						case key.CodeDeleteBackspace:
+							if len(textInput) > 0 {
+								textInput = textInput[:len(textInput)-1]
+								w.Send(paint.Event{})
+							}
 							continue
 						}
-						png.Encode(out, tabs[current].Image)
-						out.Close()
-						message = fmt.Sprintf("saved %s", *output)
-						messageUntil = time.Now().Add(2 * time.Second)
-						w.Send(paint.Event{})
+						if e.Rune > 0 {
+							textInput += string(e.Rune)
+							w.Send(paint.Event{})
+						}
+						continue
+					}
+					confirmDelete = false
+					switch e.Rune {
+					case 's', 'S':
+						if e.Modifiers&key.ModControl != 0 {
+							handleShortcut("save")
+						}
 					case 'd', 'D':
-						if len(tabs) > 1 {
-							tabs = append(tabs[:current], tabs[current+1:]...)
-							if current >= len(tabs) {
-								current = len(tabs) - 1
-							}
-						} else {
-							bnd := tabs[current].Image.Bounds()
-							tabs[0].Image = image.NewRGBA(image.Rect(0, 0, bnd.Dx(), bnd.Dy()))
-							tabs[0].Title = "1"
-							message = "no screenshot available"
-							messageUntil = time.Now().Add(2 * time.Second)
+						if e.Modifiers&key.ModControl == 0 {
+							break
 						}
-						w.Send(paint.Event{})
+						if !confirmDelete {
+							confirmDelete = true
+							message = "press D again to delete"
+							messageUntil = time.Now().Add(2 * time.Second)
+							w.Send(paint.Event{})
+							continue
+						}
+						confirmDelete = false
+						handleShortcut("delete")
 					case 'c', 'C':
-						var buf bytes.Buffer
-						png.Encode(&buf, tabs[current].Image)
-						cmd := exec.Command("wl-copy", "--type", "image/png")
-						cmd.Stdin = &buf
-						if err := cmd.Run(); err != nil {
-							log.Printf("copy: %v", err)
-						} else {
-							message = "copied to clipboard"
-							messageUntil = time.Now().Add(2 * time.Second)
+						if e.Modifiers&key.ModControl != 0 {
+							handleShortcut("copy")
 						}
+					case 'v', 'V':
+						if e.Modifiers&key.ModControl != 0 {
+							handleShortcut("paste")
+						}
+					case 'u', 'U':
+						if e.Modifiers&key.ModControl != 0 {
+							handleShortcut("dup")
+						}
+					case 'm', 'M':
+						tool = ToolMove
+						cropping = false
 						w.Send(paint.Event{})
+					case 'r', 'R':
+						tool = ToolCrop
+						cropping = false
+						w.Send(paint.Event{})
+					case 'b', 'B':
+						tool = ToolDraw
+						cropping = false
+						w.Send(paint.Event{})
+					case 'o', 'O':
+						tool = ToolCircle
+						cropping = false
+						w.Send(paint.Event{})
+					case 'l', 'L':
+						tool = ToolLine
+						cropping = false
+						w.Send(paint.Event{})
+					case 'a', 'A':
+						tool = ToolArrow
+						cropping = false
+						w.Send(paint.Event{})
+					case 't', 'T':
+						tool = ToolText
+						cropping = false
+						w.Send(paint.Event{})
+					case 'h', 'H':
+						tool = ToolNumber
+						cropping = false
+						w.Send(paint.Event{})
+					case '1', '2', '3', '4', '5', '6', '7', '8', '9':
+						if e.Modifiers&key.ModControl != 0 {
+							idx := int(e.Rune - '1')
+							if idx >= 0 && idx < len(tabs) {
+								current = idx
+								w.Send(paint.Event{})
+							}
+						}
 					case 'q', 'Q':
 						return
 					case 'n', 'N':
-						img, err := captureScreenshot()
-						if err != nil {
-							log.Printf("capture screenshot: %v", err)
-							continue
+						if e.Modifiers&key.ModControl != 0 {
+							handleShortcut("capture")
 						}
-						tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
-						current = len(tabs) - 1
-						tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
-						w.Send(paint.Event{})
 					case '+', '=':
 						tabs[current].Zoom *= 1.25
 						if tabs[current].Zoom < 0.1 {
@@ -1104,6 +1472,26 @@ func main() {
 							if tool == ToolCrop {
 								cropRect = image.Rectangle{}
 								cropping = false
+								w.Send(paint.Event{})
+							}
+						case key.CodeLeftArrow:
+							if tool == ToolMove {
+								tabs[current].Offset.X -= 10
+								w.Send(paint.Event{})
+							}
+						case key.CodeRightArrow:
+							if tool == ToolMove {
+								tabs[current].Offset.X += 10
+								w.Send(paint.Event{})
+							}
+						case key.CodeUpArrow:
+							if tool == ToolMove {
+								tabs[current].Offset.Y -= 10
+								w.Send(paint.Event{})
+							}
+						case key.CodeDownArrow:
+							if tool == ToolMove {
+								tabs[current].Offset.Y += 10
 								w.Send(paint.Event{})
 							}
 						}
