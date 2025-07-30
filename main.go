@@ -80,6 +80,15 @@ const (
 	cropResizeL
 )
 
+type actionType int
+
+const (
+	actionNone actionType = iota
+	actionMove
+	actionCrop
+	actionDraw
+)
+
 var palette = []color.RGBA{
 	{0, 0, 0, 255},       // black
 	{255, 255, 255, 255}, // white
@@ -159,17 +168,144 @@ func drawCheckerboard(dst *image.RGBA, rect image.Rectangle, size int, light, da
 var widths = []int{1, 2, 4, 6, 8}
 var numberSizes = []int{8, 12, 16, 20, 24}
 
+// ButtonState describes the visual state of a button.
+type ButtonState int
+
+const (
+	StateDefault ButtonState = iota
+	StateHover
+	StatePressed
+)
+
+// Button represents an interactive UI element.
+// Activate performs the button's action when clicked.
+type Button interface {
+	Draw(dst *image.RGBA, state ButtonState)
+	Rect() image.Rectangle
+	SetRect(r image.Rectangle)
+	Activate()
+}
+
 type Shortcut struct {
 	label  string
-	action string
+	action func()
 	rect   image.Rectangle
+	cache  [3]*image.RGBA
+}
+
+func (s *Shortcut) ensure(state ButtonState) {
+	if s.cache[state] != nil {
+		return
+	}
+	d := &font.Drawer{Face: basicfont.Face7x13}
+	w := d.MeasureString(s.label).Ceil() + 6
+	img := image.NewRGBA(image.Rect(0, 0, w, 18))
+	col := color.RGBA{200, 200, 200, 255}
+	switch state {
+	case StateHover:
+		col = color.RGBA{180, 180, 180, 255}
+	case StatePressed:
+		col = color.RGBA{150, 150, 150, 255}
+	}
+	draw.Draw(img, img.Bounds(), &image.Uniform{col}, image.Point{}, draw.Src)
+	drawRect(img, img.Bounds(), color.Black, 1)
+	d.Dst = img
+	d.Src = image.Black
+	d.Dot = fixed.P(2, 14)
+	d.DrawString(s.label)
+	s.cache[state] = img
+}
+
+func (s *Shortcut) Draw(dst *image.RGBA, state ButtonState) {
+	s.ensure(state)
+	draw.Draw(dst, s.rect, s.cache[state], image.Point{}, draw.Src)
+}
+
+func (s *Shortcut) Rect() image.Rectangle { return s.rect }
+
+func (s *Shortcut) SetRect(r image.Rectangle) {
+	if r != s.rect {
+		s.rect = r
+		s.cache = [3]*image.RGBA{}
+	}
+}
+func (s *Shortcut) Activate() {
+	if s.action != nil {
+		s.action()
+	}
+}
+
+// ToolButton represents a toolbar button that selects a drawing tool.
+type ToolButton struct {
+	label string
+	tool  Tool
+	atype actionType
+	rect  image.Rectangle
+	cache [3]*image.RGBA
+	// onSelect is called when the button is activated.
+	onSelect func()
+}
+
+func (tb *ToolButton) ensure(state ButtonState) {
+	if tb.cache[state] != nil {
+		return
+	}
+	img := image.NewRGBA(image.Rect(0, 0, tb.rect.Dx(), tb.rect.Dy()))
+	c := color.RGBA{200, 200, 200, 255}
+	switch state {
+	case StateHover:
+		c = color.RGBA{180, 180, 180, 255}
+	case StatePressed:
+		c = color.RGBA{150, 150, 150, 255}
+	}
+	draw.Draw(img, img.Bounds(), &image.Uniform{c}, image.Point{}, draw.Src)
+	d := &font.Drawer{Dst: img, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, 16)}
+	d.DrawString(tb.label)
+	tb.cache[state] = img
+}
+
+func (tb *ToolButton) Draw(dst *image.RGBA, state ButtonState) {
+	tb.ensure(state)
+	draw.Draw(dst, tb.rect, tb.cache[state], image.Point{}, draw.Src)
+}
+
+func (tb *ToolButton) Rect() image.Rectangle { return tb.rect }
+
+func (tb *ToolButton) SetRect(r image.Rectangle) {
+	if r != tb.rect {
+		tb.rect = r
+		tb.cache = [3]*image.RGBA{}
+	}
+}
+func (tb *ToolButton) Activate() {
+	if tb.onSelect != nil {
+		tb.onSelect()
+	}
+}
+
+func actionOfTool(t Tool) actionType {
+	for _, tb := range toolButtons {
+		if tb.tool == t {
+			return tb.atype
+		}
+	}
+	switch t {
+	case ToolMove:
+		return actionMove
+	case ToolCrop:
+		return actionCrop
+	case ToolDraw, ToolCircle, ToolLine, ToolArrow, ToolRect, ToolNumber:
+		return actionDraw
+	default:
+		return actionNone
+	}
 }
 
 var shortcutRects []Shortcut
 var hoverShortcut = -1
 
-var tabRects []image.Rectangle
-var toolRects []image.Rectangle
+var tabButtons []TabButton
+var toolButtons []*ToolButton
 var paletteRects []image.Rectangle
 var widthRects []image.Rectangle
 var numberRects []image.Rectangle
@@ -180,6 +316,52 @@ var hoverPalette = -1
 var hoverWidth = -1
 var hoverNumber = -1
 var hoverTextSize = -1
+
+// TabButton draws a tab title in the header bar.
+type TabButton struct {
+	label    string
+	rect     image.Rectangle
+	cache    [3]*image.RGBA
+	onSelect func()
+}
+
+func (tb *TabButton) ensure(state ButtonState) {
+	if tb.cache[state] != nil {
+		return
+	}
+	img := image.NewRGBA(image.Rect(0, 0, tb.rect.Dx(), tb.rect.Dy()))
+	c := color.RGBA{200, 200, 200, 255}
+	switch state {
+	case StateHover:
+		c = color.RGBA{180, 180, 180, 255}
+	case StatePressed:
+		c = color.RGBA{150, 150, 150, 255}
+	}
+	draw.Draw(img, img.Bounds(), &image.Uniform{c}, image.Point{}, draw.Src)
+	d := &font.Drawer{Dst: img, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, 16)}
+	d.DrawString(tb.label)
+	tb.cache[state] = img
+}
+
+func (tb *TabButton) Draw(dst *image.RGBA, state ButtonState) {
+	tb.ensure(state)
+	draw.Draw(dst, tb.rect, tb.cache[state], image.Point{}, draw.Src)
+}
+
+func (tb *TabButton) Rect() image.Rectangle { return tb.rect }
+
+func (tb *TabButton) SetRect(r image.Rectangle) {
+	if r != tb.rect {
+		tb.rect = r
+		tb.cache = [3]*image.RGBA{}
+	}
+}
+
+func (tb *TabButton) Activate() {
+	if tb.onSelect != nil {
+		tb.onSelect()
+	}
+}
 
 func numberBoxHeight(size int) int {
 	h := 2*size + 4
@@ -199,25 +381,19 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		Dot: fixed.P(4, 16)}
 	title.DrawString("ShineyShot")
 
-	tabRects = tabRects[:0]
+	tabButtons = tabButtons[:0]
 	x := toolbarWidth
 	for i, t := range tabs {
-		col := color.RGBA{200, 200, 200, 255}
+		tb := TabButton{label: t.Title, onSelect: nil}
+		tb.SetRect(image.Rect(x, 0, x+80, tabHeight))
+		state := StateDefault
 		if i == current {
-			col = color.RGBA{150, 150, 150, 255}
+			state = StatePressed
 		} else if i == hoverTab {
-			col = color.RGBA{180, 180, 180, 255}
+			state = StateHover
 		}
-		rect := image.Rect(x, 0, x+80, tabHeight)
-		draw.Draw(dst, rect, &image.Uniform{col}, image.Point{}, draw.Src)
-		d := &font.Drawer{
-			Dst:  dst,
-			Src:  image.Black,
-			Face: basicfont.Face7x13,
-			Dot:  fixed.P(x+4, 16),
-		}
-		d.DrawString(t.Title)
-		tabRects = append(tabRects, rect)
+		tb.Draw(dst, state)
+		tabButtons = append(tabButtons, tb)
 		x += 80
 	}
 	// fill remainder of bar
@@ -225,65 +401,63 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string)) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 	shortcutRects = shortcutRects[:0]
 	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", z*100)
 	var shortcuts []Shortcut
 	if textMode {
-		shortcuts = []Shortcut{{label: "Enter:place", action: "textdone"}, {label: "Esc:cancel", action: "textcancel"}}
+		shortcuts = []Shortcut{
+			{label: "Enter:place", action: func() { trigger("textdone") }},
+			{label: "Esc:cancel", action: func() { trigger("textcancel") }},
+		}
 	} else {
 		shortcuts = []Shortcut{
-			{label: "^N:capture", action: "capture"},
-			{label: "^U:dup", action: "dup"},
-			{label: "^V:paste", action: "paste"},
-			{label: zoomStr, action: "zoom"},
-			{label: "^D:delete", action: "delete"},
-			{label: "^C:copy image", action: "copy"},
-			{label: "^S:save", action: "save"},
-			{label: "Q:quit", action: "quit"},
+			{label: "^N:capture", action: func() { trigger("capture") }},
+			{label: "^U:dup", action: func() { trigger("dup") }},
+			{label: "^V:paste", action: func() { trigger("paste") }},
+			{label: zoomStr, action: func() { trigger("zoom") }},
+			{label: "^D:delete", action: func() { trigger("delete") }},
+			{label: "^C:copy image", action: func() { trigger("copy") }},
+			{label: "^S:save", action: func() { trigger("save") }},
+			{label: "Q:quit", action: func() { trigger("quit") }},
 		}
 		if tool == ToolCrop {
-			shortcuts = append(shortcuts, Shortcut{label: "Enter:crop", action: "crop"}, Shortcut{label: "Ctrl+Enter:new tab", action: "croptab"}, Shortcut{label: "Esc:cancel", action: "cropcancel"})
+			shortcuts = append(shortcuts,
+				Shortcut{label: "Enter:crop", action: func() { trigger("crop") }},
+				Shortcut{label: "Ctrl+Enter:new tab", action: func() { trigger("croptab") }},
+				Shortcut{label: "Esc:cancel", action: func() { trigger("cropcancel") }},
+			)
 		}
 	}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
-	for i, sc := range shortcuts {
-		d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13}
-		w := d.MeasureString(sc.label).Ceil() + 6
-		btn := image.Rect(x-2, y-14, x+w-2, y+4)
-		col := color.RGBA{200, 200, 200, 255}
+	for i := range shortcuts {
+		sc := &shortcuts[i]
+		sc.SetRect(image.Rect(x-2, y-14, x+2, y+4))
+		state := StateDefault
 		if i == hoverShortcut {
-			col = color.RGBA{180, 180, 180, 255}
+			state = StateHover
 		}
-		draw.Draw(dst, btn, &image.Uniform{col}, image.Point{}, draw.Src)
-		drawRect(dst, btn, color.Black, 1)
-		d.Dot = fixed.P(x, y)
-		d.DrawString(sc.label)
-		sc.rect = btn
-		shortcutRects = append(shortcutRects, sc)
-		x += w + 8
+		sc.Draw(dst, state)
+		shortcutRects = append(shortcutRects, *sc)
+		x = sc.rect.Max.X + 8
 	}
 }
 
 func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 	y := tabHeight
-	tools := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "Rect", "H:Num", "T:Text"}
-	toolRects = toolRects[:0]
-	for i, name := range tools {
-		c := color.RGBA{200, 200, 200, 255}
-		if Tool(i) == tool {
-			c = color.RGBA{150, 150, 150, 255}
+	for i, tb := range toolButtons {
+		r := image.Rect(0, y, toolbarWidth, y+24)
+		tb.SetRect(r)
+		state := StateDefault
+		if tb.tool == tool {
+			state = StatePressed
 		} else if i == hoverTool {
-			c = color.RGBA{180, 180, 180, 255}
+			state = StateHover
 		}
-		rect := image.Rect(0, y, toolbarWidth, y+24)
-		draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
-		d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13, Dot: fixed.P(4, y+16)}
-		d.DrawString(name)
-		toolRects = append(toolRects, rect)
+		tb.Draw(dst, state)
 		y += 24
 	}
 
@@ -750,10 +924,8 @@ func main() {
 		tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2}}
 		current := 0
 
-		var drawing bool
-		var cropping bool
+		var active actionType
 		var cropMode cropAction
-		var moving bool
 		var moveStart image.Point
 		var moveOffset image.Point
 		var last image.Point
@@ -772,6 +944,25 @@ func main() {
 
 		col := palette[colorIdx]
 		tabs[current].Zoom = fitZoom(rgba, width, height)
+
+		toolButtons = []*ToolButton{
+			{label: "M:Move", tool: ToolMove, atype: actionMove},
+			{label: "R:Crop", tool: ToolCrop, atype: actionCrop},
+			{label: "B:Draw", tool: ToolDraw, atype: actionDraw},
+			{label: "O:Circle", tool: ToolCircle, atype: actionDraw},
+			{label: "L:Line", tool: ToolLine, atype: actionDraw},
+			{label: "A:Arrow", tool: ToolArrow, atype: actionDraw},
+			{label: "X:Rect", tool: ToolRect, atype: actionDraw},
+			{label: "H:Num", tool: ToolNumber, atype: actionDraw},
+			{label: "T:Text", tool: ToolText, atype: actionNone},
+		}
+		for _, tb := range toolButtons {
+			t := tb
+			tb.onSelect = func() {
+				tool = t.tool
+				active = actionNone
+			}
+		}
 
 		handleShortcut := func(action string) {
 			switch action {
@@ -848,7 +1039,7 @@ func main() {
 					cropped := cropImage(tabs[current].Image, cropRect)
 					tabs[current].Image = cropped
 					tabs[current].Offset = tabs[current].Offset.Add(cropRect.Min)
-					cropping = false
+					active = actionNone
 					cropRect = image.Rectangle{}
 				}
 			case "croptab":
@@ -857,13 +1048,13 @@ func main() {
 					off := tabs[current].Offset.Add(cropRect.Min)
 					tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
 					current = len(tabs) - 1
-					cropping = false
+					active = actionNone
 					cropRect = image.Rectangle{}
 				}
 			case "cropcancel":
 				if tool == ToolCrop {
 					cropRect = image.Rectangle{}
-					cropping = false
+					active = actionNone
 				}
 			}
 			w.Send(paint.Event{})
@@ -907,10 +1098,10 @@ func main() {
 				xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, img.Bounds(), draw.Over, nil)
 
 				// if cropping, draw the selection box (and handles)
-				if tool == ToolCrop && (cropping || !cropRect.Empty()) {
+				if tool == ToolCrop && (active == actionCrop || !cropRect.Empty()) {
 					// build the rectangle in image‐coords
 					sel := cropRect
-					if cropping {
+					if active == actionCrop {
 						sel = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(sel)
 					}
 					// scale it to screen‐coords
@@ -933,7 +1124,7 @@ func main() {
 				// UI chrome
 				drawTabs(b.RGBA(), tabs, current)
 				drawToolbar(b.RGBA(), tool, colorIdx, tabs[current].WidthIdx, numberIdx)
-				drawShortcuts(b.RGBA(), width, height, tool, textInputActive, tabs[current].Zoom)
+				drawShortcuts(b.RGBA(), width, height, tool, textInputActive, tabs[current].Zoom, handleShortcut)
 
 				// transient message overlay
 				if message != "" && time.Now().Before(messageUntil) {
@@ -962,7 +1153,7 @@ func main() {
 						if p.In(sc.rect) {
 							hoverShortcut = i
 							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-								handleShortcut(sc.action)
+								sc.Activate()
 							}
 							break
 						}
@@ -975,8 +1166,8 @@ func main() {
 				if int(e.Y) < tabHeight {
 					hoverTab = -1
 					p := image.Point{int(e.X), int(e.Y)}
-					for i, r := range tabRects {
-						if p.In(r) {
+					for i, tb := range tabButtons {
+						if p.In(tb.rect) {
 							hoverTab = i
 							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
 								current = i
@@ -994,21 +1185,18 @@ func main() {
 				if int(e.X) < toolbarWidth && int(e.Y) >= tabHeight {
 					pos := int(e.Y) - tabHeight
 					idx := pos / 24
-					if idx < 8 {
+					if idx < len(toolButtons) {
 						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							tool = Tool(idx)
-							cropping = false
+							toolButtons[idx].Activate()
+							w.Send(paint.Event{})
 						}
 						hoverTool = idx
 						if e.Direction == mouse.DirNone {
 							w.Send(paint.Event{})
 						}
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							w.Send(paint.Event{})
-						}
 						continue
 					}
-					pos -= 8 * 24
+					pos -= len(toolButtons) * 24
 					pos -= 4
 					paletteCols := toolbarWidth / 18
 					rows := (len(palette) + paletteCols - 1) / paletteCols
@@ -1101,9 +1289,10 @@ func main() {
 				my := int((float64(e.Y)-float64(baseRect.Min.Y))/tabs[current].Zoom) - tabs[current].Offset.Y
 				if e.Button == mouse.ButtonLeft {
 					if e.Direction == mouse.DirPress {
+						act := actionOfTool(tool)
 						switch tool {
 						case ToolMove:
-							moving = true
+							active = act
 							moveStart = image.Point{int(e.X), int(e.Y)}
 							moveOffset = tabs[current].Offset
 						case ToolCrop:
@@ -1123,16 +1312,16 @@ func main() {
 									cropRect = image.Rect(mx, my, mx, my)
 								}
 							}
-							cropping = true
+							active = act
 							cropMode = action
 							cropStart = p
 							cropStartRect = cropRect
 							w.Send(paint.Event{})
 						case ToolDraw:
-							drawing = true
+							active = act
 							last = image.Point{mx, my}
 						case ToolCircle, ToolLine, ToolArrow, ToolRect, ToolNumber:
-							drawing = true
+							active = act
 							last = image.Point{mx, my}
 						case ToolText:
 							if textInputActive {
@@ -1145,7 +1334,7 @@ func main() {
 							w.Send(paint.Event{})
 						}
 					} else if e.Direction == mouse.DirRelease {
-						if cropping && tool == ToolCrop {
+						if active == actionCrop && tool == ToolCrop {
 							dx := mx - cropStart.X
 							dy := my - cropStart.Y
 							r := cropStartRect
@@ -1181,7 +1370,7 @@ func main() {
 							}
 							cropRect = r
 						}
-						if drawing && tool != ToolCrop {
+						if active == actionDraw && tool != ToolCrop {
 							switch tool {
 							case ToolDraw:
 								minX, minY := last.X, last.Y
@@ -1286,19 +1475,17 @@ func main() {
 							}
 							w.Send(paint.Event{})
 						}
-						if moving && tool == ToolMove {
+						if active == actionMove && tool == ToolMove {
 							dx := int(float64(int(e.X)-moveStart.X) / tabs[current].Zoom)
 							dy := int(float64(int(e.Y)-moveStart.Y) / tabs[current].Zoom)
 							tabs[current].Offset = moveOffset.Add(image.Pt(dx, dy))
 							w.Send(paint.Event{})
 						}
-						drawing = false
-						cropping = false
-						moving = false
+						active = actionNone
 					}
 				}
 
-				if cropping && tool == ToolCrop && e.Direction == mouse.DirNone {
+				if active == actionCrop && tool == ToolCrop && e.Direction == mouse.DirNone {
 					dx := mx - cropStart.X
 					dy := my - cropStart.Y
 					r := cropStartRect
@@ -1336,7 +1523,7 @@ func main() {
 					w.Send(paint.Event{})
 				}
 
-				if drawing && tool == ToolDraw && e.Direction == mouse.DirNone {
+				if active == actionDraw && tool == ToolDraw && e.Direction == mouse.DirNone {
 					p := image.Point{mx, my}
 					minX, minY := last.X, last.Y
 					maxX, maxY := p.X, p.Y
@@ -1360,7 +1547,7 @@ func main() {
 					last = p
 					w.Send(paint.Event{})
 				}
-				if moving && tool == ToolMove && e.Direction == mouse.DirNone {
+				if active == actionMove && tool == ToolMove && e.Direction == mouse.DirNone {
 					dx := int(float64(int(e.X)-moveStart.X) / tabs[current].Zoom)
 					dy := int(float64(int(e.Y)-moveStart.Y) / tabs[current].Zoom)
 					tabs[current].Offset = moveOffset.Add(image.Pt(dx, dy))
@@ -1433,35 +1620,39 @@ func main() {
 						}
 					case 'm', 'M':
 						tool = ToolMove
-						cropping = false
+						active = actionNone
 						w.Send(paint.Event{})
 					case 'r', 'R':
 						tool = ToolCrop
-						cropping = false
+						active = actionNone
 						w.Send(paint.Event{})
 					case 'b', 'B':
 						tool = ToolDraw
-						cropping = false
+						active = actionNone
 						w.Send(paint.Event{})
 					case 'o', 'O':
 						tool = ToolCircle
-						cropping = false
+						active = actionNone
 						w.Send(paint.Event{})
 					case 'l', 'L':
 						tool = ToolLine
-						cropping = false
+						active = actionNone
 						w.Send(paint.Event{})
 					case 'a', 'A':
 						tool = ToolArrow
-						cropping = false
+						active = actionNone
+						w.Send(paint.Event{})
+					case 'x', 'X':
+						tool = ToolRect
+						active = actionNone
 						w.Send(paint.Event{})
 					case 't', 'T':
 						tool = ToolText
-						cropping = false
+						active = actionNone
 						w.Send(paint.Event{})
 					case 'h', 'H':
 						tool = ToolNumber
-						cropping = false
+						active = actionNone
 						w.Send(paint.Event{})
 					case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 						if e.Modifiers&key.ModControl != 0 {
@@ -1502,14 +1693,14 @@ func main() {
 									tabs[current].Image = cropped
 									tabs[current].Offset = off
 								}
-								cropping = false
+								active = actionNone
 								cropRect = image.Rectangle{}
 								w.Send(paint.Event{})
 							}
 						case key.CodeEscape:
 							if tool == ToolCrop {
 								cropRect = image.Rectangle{}
-								cropping = false
+								active = actionNone
 								w.Send(paint.Event{})
 							}
 						case key.CodeLeftArrow:
