@@ -49,8 +49,7 @@ const frameDropThreshold = 10
 type Tool int
 
 const (
-	ToolView Tool = iota
-	ToolModify
+	ToolMove Tool = iota
 	ToolCrop
 	ToolDraw
 	ToolCircle
@@ -69,392 +68,9 @@ type Tab struct {
 	Zoom       float64
 	NextNumber int
 	WidthIdx   int
-	Components []Component
 }
 
-// Component describes a drawable element on the canvas.
-type Component interface {
-	Draw(dst *image.RGBA, off image.Point)
-	DrawScaled(dst *image.RGBA, off image.Point, zoom float64)
-	Bounds() image.Rectangle
-	MoveBy(dx, dy int)
-	IsImage() bool
-	Contains(p image.Point) bool
-}
-
-// ImageComponent draws a raster image at a position. If Image is true
-// the element is considered an image for layering purposes.
-type ImageComponent struct {
-	Img   *image.RGBA
-	Pos   image.Point
-	Image bool
-}
-
-func (c *ImageComponent) Draw(dst *image.RGBA, off image.Point) {
-	draw.Draw(dst, c.Img.Bounds().Add(c.Pos.Add(off)), c.Img, image.Point{}, draw.Over)
-}
-
-func (c *ImageComponent) DrawScaled(dst *image.RGBA, off image.Point, zoom float64) {
-	r := image.Rect(
-		int(float64(c.Pos.X+off.X)*zoom),
-		int(float64(c.Pos.Y+off.Y)*zoom),
-		int(float64(c.Pos.X+off.X+c.Img.Bounds().Dx())*zoom),
-		int(float64(c.Pos.Y+off.Y+c.Img.Bounds().Dy())*zoom),
-	)
-	xdraw.NearestNeighbor.Scale(dst, r, c.Img, c.Img.Bounds(), draw.Over, nil)
-}
-
-func (c *ImageComponent) Bounds() image.Rectangle     { return c.Img.Bounds().Add(c.Pos) }
-func (c *ImageComponent) MoveBy(dx, dy int)           { c.Pos.X += dx; c.Pos.Y += dy }
-func (c *ImageComponent) IsImage() bool               { return c.Image }
-func (c *ImageComponent) Contains(p image.Point) bool { return p.In(c.Bounds()) }
-
-// LineComponent draws a straight line between two points.
-type LineComponent struct {
-	Start, End image.Point
-	Col        color.Color
-	Width      int
-}
-
-func (c *LineComponent) Draw(dst *image.RGBA, off image.Point) {
-	drawLine(dst, c.Start.X+off.X, c.Start.Y+off.Y, c.End.X+off.X, c.End.Y+off.Y, c.Col, c.Width)
-}
-
-func (c *LineComponent) DrawScaled(dst *image.RGBA, off image.Point, zoom float64) {
-	x0 := int(float64(c.Start.X+off.X) * zoom)
-	y0 := int(float64(c.Start.Y+off.Y) * zoom)
-	x1 := int(float64(c.End.X+off.X) * zoom)
-	y1 := int(float64(c.End.Y+off.Y) * zoom)
-	w := int(float64(c.Width) * zoom)
-	if w < 1 {
-		w = 1
-	}
-	drawLine(dst, x0, y0, x1, y1, c.Col, w)
-}
-
-func (c *LineComponent) Bounds() image.Rectangle {
-	minX := c.Start.X
-	if c.End.X < minX {
-		minX = c.End.X
-	}
-	minY := c.Start.Y
-	if c.End.Y < minY {
-		minY = c.End.Y
-	}
-	maxX := c.Start.X
-	if c.End.X > maxX {
-		maxX = c.End.X
-	}
-	maxY := c.Start.Y
-	if c.End.Y > maxY {
-		maxY = c.End.Y
-	}
-	pad := c.Width + 2
-	return image.Rect(minX-pad, minY-pad, maxX+pad, maxY+pad)
-}
-
-func (c *LineComponent) MoveBy(dx, dy int) {
-	c.Start = c.Start.Add(image.Pt(dx, dy))
-	c.End = c.End.Add(image.Pt(dx, dy))
-}
-
-func (c *LineComponent) IsImage() bool               { return false }
-func (c *LineComponent) Contains(p image.Point) bool { return p.In(c.Bounds()) }
-
-func (c *LineComponent) HandleRects() []image.Rectangle {
-	hs := handleSize / 2
-	rects := make([]image.Rectangle, 8)
-	rects[0] = image.Rect(c.Start.X-hs, c.Start.Y-hs, c.Start.X+hs, c.Start.Y+hs)
-	rects[4] = image.Rect(c.End.X-hs, c.End.Y-hs, c.End.X+hs, c.End.Y+hs)
-	return rects
-}
-
-func (c *LineComponent) Resize(mode cropAction, start image.Rectangle, dx, dy int) {
-	switch mode {
-	case cropMove:
-		c.MoveBy(dx, dy)
-	case cropResizeTL, cropResizeL, cropResizeBL:
-		c.Start = compStartA.Add(image.Pt(dx, dy))
-	case cropResizeBR, cropResizeR, cropResizeTR:
-		c.End = compStartB.Add(image.Pt(dx, dy))
-	}
-}
-
-// ArrowComponent draws a line with an arrow head.
-type ArrowComponent struct {
-	Start, End image.Point
-	Col        color.Color
-	Width      int
-}
-
-func (c *ArrowComponent) Draw(dst *image.RGBA, off image.Point) {
-	drawArrow(dst, c.Start.X+off.X, c.Start.Y+off.Y, c.End.X+off.X, c.End.Y+off.Y, c.Col, c.Width)
-}
-
-func (c *ArrowComponent) DrawScaled(dst *image.RGBA, off image.Point, zoom float64) {
-	x0 := int(float64(c.Start.X+off.X) * zoom)
-	y0 := int(float64(c.Start.Y+off.Y) * zoom)
-	x1 := int(float64(c.End.X+off.X) * zoom)
-	y1 := int(float64(c.End.Y+off.Y) * zoom)
-	w := int(float64(c.Width) * zoom)
-	if w < 1 {
-		w = 1
-	}
-	drawArrow(dst, x0, y0, x1, y1, c.Col, w)
-}
-
-func (c *ArrowComponent) Bounds() image.Rectangle {
-	minX := c.Start.X
-	if c.End.X < minX {
-		minX = c.End.X
-	}
-	minY := c.Start.Y
-	if c.End.Y < minY {
-		minY = c.End.Y
-	}
-	maxX := c.Start.X
-	if c.End.X > maxX {
-		maxX = c.End.X
-	}
-	maxY := c.Start.Y
-	if c.End.Y > maxY {
-		maxY = c.End.Y
-	}
-	pad := c.Width + 10
-	return image.Rect(minX-pad, minY-pad, maxX+pad, maxY+pad)
-}
-
-func (c *ArrowComponent) MoveBy(dx, dy int) {
-	c.Start = c.Start.Add(image.Pt(dx, dy))
-	c.End = c.End.Add(image.Pt(dx, dy))
-}
-
-func (c *ArrowComponent) IsImage() bool               { return false }
-func (c *ArrowComponent) Contains(p image.Point) bool { return p.In(c.Bounds()) }
-
-func (c *ArrowComponent) HandleRects() []image.Rectangle {
-	hs := handleSize / 2
-	rects := make([]image.Rectangle, 8)
-	rects[0] = image.Rect(c.Start.X-hs, c.Start.Y-hs, c.Start.X+hs, c.Start.Y+hs)
-	rects[4] = image.Rect(c.End.X-hs, c.End.Y-hs, c.End.X+hs, c.End.Y+hs)
-	return rects
-}
-
-func (c *ArrowComponent) Resize(mode cropAction, start image.Rectangle, dx, dy int) {
-	switch mode {
-	case cropMove:
-		c.MoveBy(dx, dy)
-	case cropResizeTL, cropResizeL, cropResizeBL:
-		c.Start = compStartA.Add(image.Pt(dx, dy))
-	case cropResizeBR, cropResizeR, cropResizeTR:
-		c.End = compStartB.Add(image.Pt(dx, dy))
-	}
-}
-
-// RectComponent draws a rectangle.
-type RectComponent struct {
-	Rect  image.Rectangle
-	Col   color.Color
-	Width int
-}
-
-func (c *RectComponent) Draw(dst *image.RGBA, off image.Point) {
-	drawRect(dst, c.Rect.Add(off), c.Col, c.Width)
-}
-
-func (c *RectComponent) DrawScaled(dst *image.RGBA, off image.Point, zoom float64) {
-	r := image.Rect(
-		int(float64(c.Rect.Min.X+off.X)*zoom),
-		int(float64(c.Rect.Min.Y+off.Y)*zoom),
-		int(float64(c.Rect.Max.X+off.X)*zoom),
-		int(float64(c.Rect.Max.Y+off.Y)*zoom),
-	)
-	w := int(float64(c.Width) * zoom)
-	if w < 1 {
-		w = 1
-	}
-	drawRect(dst, r, c.Col, w)
-}
-
-func (c *RectComponent) Bounds() image.Rectangle {
-	pad := c.Width / 2
-	return c.Rect.Inset(-pad - 1)
-}
-
-func (c *RectComponent) MoveBy(dx, dy int)           { c.Rect = c.Rect.Add(image.Pt(dx, dy)) }
-func (c *RectComponent) IsImage() bool               { return false }
-func (c *RectComponent) Contains(p image.Point) bool { return p.In(c.Rect) }
-func (c *RectComponent) HandleRects() []image.Rectangle {
-	return cropHandleRects(c.Rect)
-}
-
-func (c *RectComponent) Resize(mode cropAction, start image.Rectangle, dx, dy int) {
-	r := start
-	switch mode {
-	case cropMove:
-		r = r.Add(image.Pt(dx, dy))
-	case cropResizeTL:
-		r.Min.X = start.Min.X + dx
-		r.Min.Y = start.Min.Y + dy
-	case cropResizeT:
-		r.Min.Y = start.Min.Y + dy
-	case cropResizeTR:
-		r.Min.Y = start.Min.Y + dy
-		r.Max.X = start.Max.X + dx
-	case cropResizeR:
-		r.Max.X = start.Max.X + dx
-	case cropResizeBR:
-		r.Max.X = start.Max.X + dx
-		r.Max.Y = start.Max.Y + dy
-	case cropResizeB:
-		r.Max.Y = start.Max.Y + dy
-	case cropResizeBL:
-		r.Min.X = start.Min.X + dx
-		r.Max.Y = start.Max.Y + dy
-	case cropResizeL:
-		r.Min.X = start.Min.X + dx
-	}
-	if r.Min.X > r.Max.X {
-		r.Min.X, r.Max.X = r.Max.X, r.Min.X
-	}
-	if r.Min.Y > r.Max.Y {
-		r.Min.Y, r.Max.Y = r.Max.Y, r.Min.Y
-	}
-	c.Rect = r
-}
-
-// CircleComponent draws a circle.
-type CircleComponent struct {
-	Center image.Point
-	Radius int
-	Col    color.Color
-	Width  int
-}
-
-func (c *CircleComponent) Draw(dst *image.RGBA, off image.Point) {
-	drawCircle(dst, c.Center.X+off.X, c.Center.Y+off.Y, c.Radius, c.Col, c.Width)
-}
-
-func (c *CircleComponent) DrawScaled(dst *image.RGBA, off image.Point, zoom float64) {
-	cx := int(float64(c.Center.X+off.X) * zoom)
-	cy := int(float64(c.Center.Y+off.Y) * zoom)
-	r := int(float64(c.Radius) * zoom)
-	w := int(float64(c.Width) * zoom)
-	if w < 1 {
-		w = 1
-	}
-	drawCircle(dst, cx, cy, r, c.Col, w)
-}
-
-func (c *CircleComponent) Bounds() image.Rectangle {
-	pad := c.Radius + c.Width/2 + 1
-	return image.Rect(c.Center.X-pad, c.Center.Y-pad, c.Center.X+pad, c.Center.Y+pad)
-}
-
-func (c *CircleComponent) MoveBy(dx, dy int) { c.Center = c.Center.Add(image.Pt(dx, dy)) }
-func (c *CircleComponent) IsImage() bool     { return false }
-func (c *CircleComponent) Contains(p image.Point) bool {
-	dx := p.X - c.Center.X
-	dy := p.Y - c.Center.Y
-	r := c.Radius + c.Width/2
-	return dx*dx+dy*dy <= r*r
-}
-
-func (c *CircleComponent) HandleRects() []image.Rectangle {
-	hs := handleSize / 2
-	rr := c.Radius + c.Width/2
-	ang := []float64{3 * math.Pi / 4, math.Pi / 2, math.Pi / 4, 0, -math.Pi / 4, -math.Pi / 2, -3 * math.Pi / 4, math.Pi}
-	out := make([]image.Rectangle, 0, 8)
-	for _, a := range ang {
-		x := c.Center.X + int(math.Cos(a)*float64(rr))
-		y := c.Center.Y - int(math.Sin(a)*float64(rr))
-		out = append(out, image.Rect(x-hs, y-hs, x+hs, y+hs))
-	}
-	return out
-}
-
-func (c *CircleComponent) Resize(mode cropAction, start image.Rectangle, dx, dy int) {
-	r := start
-	switch mode {
-	case cropMove:
-		r = r.Add(image.Pt(dx, dy))
-	case cropResizeTL:
-		r.Min.X = start.Min.X + dx
-		r.Min.Y = start.Min.Y + dy
-	case cropResizeT:
-		r.Min.Y = start.Min.Y + dy
-	case cropResizeTR:
-		r.Min.Y = start.Min.Y + dy
-		r.Max.X = start.Max.X + dx
-	case cropResizeR:
-		r.Max.X = start.Max.X + dx
-	case cropResizeBR:
-		r.Max.X = start.Max.X + dx
-		r.Max.Y = start.Max.Y + dy
-	case cropResizeB:
-		r.Max.Y = start.Max.Y + dy
-	case cropResizeBL:
-		r.Min.X = start.Min.X + dx
-		r.Max.Y = start.Max.Y + dy
-	case cropResizeL:
-		r.Min.X = start.Min.X + dx
-	}
-	if r.Min.X > r.Max.X {
-		r.Min.X, r.Max.X = r.Max.X, r.Min.X
-	}
-	if r.Min.Y > r.Max.Y {
-		r.Min.Y, r.Max.Y = r.Max.Y, r.Min.Y
-	}
-	cx := (r.Min.X + r.Max.X) / 2
-	cy := (r.Min.Y + r.Max.Y) / 2
-	radx := (r.Max.X-r.Min.X)/2 - c.Width/2 - 1
-	rady := (r.Max.Y-r.Min.Y)/2 - c.Width/2 - 1
-	if radx > rady {
-		c.Radius = radx
-	} else {
-		c.Radius = rady
-	}
-	if c.Radius < 1 {
-		c.Radius = 1
-	}
-	c.Center = image.Point{cx, cy}
-}
-
-// NumberComponent draws a numbered marker.
-type NumberComponent struct {
-	Pos  image.Point
-	Num  int
-	Size int
-	Col  color.Color
-}
-
-func (c *NumberComponent) Draw(dst *image.RGBA, off image.Point) {
-	drawNumberBox(dst, c.Pos.X+off.X, c.Pos.Y+off.Y, c.Num, c.Col, c.Size)
-}
-
-func (c *NumberComponent) DrawScaled(dst *image.RGBA, off image.Point, zoom float64) {
-	px := int(float64(c.Pos.X+off.X) * zoom)
-	py := int(float64(c.Pos.Y+off.Y) * zoom)
-	s := int(float64(c.Size) * zoom)
-	if s < 1 {
-		s = 1
-	}
-	drawNumberBox(dst, px, py, c.Num, c.Col, s)
-}
-
-func (c *NumberComponent) Bounds() image.Rectangle {
-	r := c.Size + 2
-	return image.Rect(c.Pos.X-r, c.Pos.Y-r, c.Pos.X+r, c.Pos.Y+r)
-}
-
-func (c *NumberComponent) MoveBy(dx, dy int)           { c.Pos = c.Pos.Add(image.Pt(dx, dy)) }
-func (c *NumberComponent) IsImage() bool               { return false }
-func (c *NumberComponent) Contains(p image.Point) bool { return p.In(c.Bounds()) }
-
-const handleSize = 16
-
-var compStartA image.Point
-var compStartB image.Point
+const handleSize = 8
 
 type cropAction int
 
@@ -719,7 +335,7 @@ func actionOfTool(t Tool) actionType {
 		}
 	}
 	switch t {
-	case ToolView, ToolModify:
+	case ToolMove:
 		return actionMove
 	case ToolCrop:
 		return actionCrop
@@ -841,7 +457,6 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 			{label: "^N:capture", action: func() { trigger("capture") }},
 			{label: "^U:dup", action: func() { trigger("dup") }},
 			{label: "^V:paste", action: func() { trigger("paste") }},
-			{label: "^Shift+V:paste new", action: func() { trigger("pasteNew") }},
 			{label: zoomStr, action: func() { trigger("zoom") }},
 			{label: "^D:delete", action: func() { trigger("delete") }},
 			{label: "^C:copy image", action: func() { trigger("copy") }},
@@ -1205,66 +820,6 @@ func drawDashedRect(img *image.RGBA, rect image.Rectangle, dash, thickness int, 
 	drawDashedLine(img, rect.Min.X, rect.Max.Y, rect.Min.X, rect.Min.Y, dash, thickness, c1, c2)
 }
 
-func drawDashedCircle(img *image.RGBA, cx, cy, r, dash, thickness int, c1, c2 color.Color) {
-	steps := int(2 * math.Pi * float64(r))
-	if steps < 1 {
-		steps = 1
-	}
-	for i := 0; i < steps; i += dash * 2 {
-		for j := 0; j < dash && i+j < steps; j++ {
-			a0 := 2 * math.Pi * float64(i+j) / float64(steps)
-			a1 := 2 * math.Pi * float64(i+j+1) / float64(steps)
-			x0 := cx + int(math.Cos(a0)*float64(r))
-			y0 := cy - int(math.Sin(a0)*float64(r))
-			x1 := cx + int(math.Cos(a1)*float64(r))
-			y1 := cy - int(math.Sin(a1)*float64(r))
-			drawLine(img, x0, y0, x1, y1, c1, thickness)
-		}
-		for j := 0; j < dash && i+dash+j < steps; j++ {
-			a0 := 2 * math.Pi * float64(i+dash+j) / float64(steps)
-			a1 := 2 * math.Pi * float64(i+dash+j+1) / float64(steps)
-			x0 := cx + int(math.Cos(a0)*float64(r))
-			y0 := cy - int(math.Sin(a0)*float64(r))
-			x1 := cx + int(math.Cos(a1)*float64(r))
-			y1 := cy - int(math.Sin(a1)*float64(r))
-			drawLine(img, x0, y0, x1, y1, c2, thickness)
-		}
-	}
-}
-
-func freehandComponent(points []image.Point, col color.Color, width int) Component {
-	if len(points) < 2 {
-		img := image.NewRGBA(image.Rect(0, 0, width, width))
-		drawFilledCircle(img, width/2, width/2, width/2, col)
-		return &ImageComponent{Img: img, Pos: points[0], Image: false}
-	}
-	minX, minY := points[0].X, points[0].Y
-	maxX, maxY := minX, minY
-	for _, p := range points[1:] {
-		if p.X < minX {
-			minX = p.X
-		}
-		if p.Y < minY {
-			minY = p.Y
-		}
-		if p.X > maxX {
-			maxX = p.X
-		}
-		if p.Y > maxY {
-			maxY = p.Y
-		}
-	}
-	pad := width/2 + 1
-	rect := image.Rect(minX-pad, minY-pad, maxX+pad, maxY+pad)
-	img := image.NewRGBA(image.Rect(0, 0, rect.Dx(), rect.Dy()))
-	last := points[0]
-	for _, p := range points[1:] {
-		drawLine(img, last.X-rect.Min.X, last.Y-rect.Min.Y, p.X-rect.Min.X, p.Y-rect.Min.Y, col, width)
-		last = p
-	}
-	return &ImageComponent{Img: img, Pos: rect.Min, Image: false}
-}
-
 func drawRect(img *image.RGBA, rect image.Rectangle, col color.Color, thick int) {
 	drawLine(img, rect.Min.X, rect.Min.Y, rect.Max.X-1, rect.Min.Y, col, thick)
 	drawLine(img, rect.Max.X-1, rect.Min.Y, rect.Max.X-1, rect.Max.Y-1, col, thick)
@@ -1299,24 +854,6 @@ func cropImage(img *image.RGBA, rect image.Rectangle) *image.RGBA {
 	if !src.Empty() {
 		draw.Draw(out, src.Sub(rect.Min), img, src.Min, draw.Src)
 	}
-	return out
-}
-
-// flatten merges all components of the tab into a single image and clears the list.
-func flatten(t *Tab) *image.RGBA {
-	union := t.Image.Bounds()
-	for _, c := range t.Components {
-		union = union.Union(c.Bounds())
-	}
-	out := image.NewRGBA(image.Rect(0, 0, union.Dx(), union.Dy()))
-	shift := image.Point{-union.Min.X, -union.Min.Y}
-	draw.Draw(out, t.Image.Bounds().Add(shift), t.Image, image.Point{}, draw.Src)
-	for _, c := range t.Components {
-		c.Draw(out, shift)
-	}
-	t.Components = nil
-	t.Image = out
-	t.Offset = t.Offset.Add(union.Min)
 	return out
 }
 
@@ -1391,8 +928,6 @@ type paintState struct {
 	message         string
 	messageUntil    time.Time
 	handleShortcut  func(string)
-	selected        int
-	preview         Component
 }
 
 func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintState) {
@@ -1414,57 +949,6 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 	off := st.tabs[st.current].Offset
 	dst := base.Add(image.Pt(int(float64(off.X)*zoom), int(float64(off.Y)*zoom)))
 	xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, img.Bounds(), draw.Over, nil)
-	basePos := dst.Min
-	comps := st.tabs[st.current].Components
-	for _, c := range comps {
-		if c.IsImage() {
-			c.DrawScaled(b.RGBA(), basePos, zoom)
-			if ctx.Err() != nil {
-				return
-			}
-		}
-	}
-	for i, c := range comps {
-		if !c.IsImage() {
-			c.DrawScaled(b.RGBA(), basePos, zoom)
-			if ctx.Err() != nil {
-				return
-			}
-			if st.selected == i {
-				if cc, ok := c.(*CircleComponent); ok {
-					cx := int(float64(basePos.X+cc.Center.X) * zoom)
-					cy := int(float64(basePos.Y+cc.Center.Y) * zoom)
-					r := int(float64(cc.Radius+cc.Width/2+handleSize/2) * zoom)
-					drawDashedCircle(b.RGBA(), cx, cy, r, 4, 1, color.White, color.Black)
-				} else {
-					br := c.Bounds().Add(basePos)
-					r := image.Rect(
-						int(float64(br.Min.X)*zoom),
-						int(float64(br.Min.Y)*zoom),
-						int(float64(br.Max.X)*zoom),
-						int(float64(br.Max.Y)*zoom),
-					)
-					drawDashedRect(b.RGBA(), r, 4, 1, color.White, color.Black)
-				}
-				if hrProvider, ok := c.(interface{ HandleRects() []image.Rectangle }); ok {
-					for _, hr := range hrProvider.HandleRects() {
-						sr := image.Rect(
-							int(float64(basePos.X+hr.Min.X)*zoom),
-							int(float64(basePos.Y+hr.Min.Y)*zoom),
-							int(float64(basePos.X+hr.Max.X)*zoom),
-							int(float64(basePos.Y+hr.Max.Y)*zoom),
-						)
-						draw.Draw(b.RGBA(), sr, &image.Uniform{color.White}, image.Point{}, draw.Src)
-						drawRect(b.RGBA(), sr, color.Black, 1)
-						drawDashedRect(b.RGBA(), sr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
-					}
-				}
-			}
-		}
-	}
-	if st.preview != nil {
-		st.preview.DrawScaled(b.RGBA(), basePos, zoom)
-	}
 	if ctx.Err() != nil {
 		return
 	}
@@ -1585,11 +1069,7 @@ func main() {
 		var active actionType
 		var cropMode cropAction
 		var moveStart image.Point
-		var compStartRect image.Rectangle
-		var compMode cropAction
-		var selectedComp int
-		var previewComp Component
-		var drawPoints []image.Point
+		var moveOffset image.Point
 		var last image.Point
 		var cropStart image.Point
 		var cropStartRect image.Rectangle
@@ -1600,8 +1080,7 @@ func main() {
 		var textInputActive bool
 		var textInput string
 		var textPos image.Point
-		tool := ToolView
-		selectedComp = -1
+		tool := ToolMove
 		colorIdx := 2 // red
 		numberIdx := 0
 		var paintMu sync.Mutex
@@ -1631,8 +1110,7 @@ func main() {
 		tabs[current].Zoom = fitZoom(rgba, width, height)
 
 		toolButtons = []*CacheButton{
-			{Button: &ToolButton{label: "V:View", tool: ToolView, atype: actionMove}},
-			{Button: &ToolButton{label: "M:Mod", tool: ToolModify, atype: actionMove}},
+			{Button: &ToolButton{label: "M:Move", tool: ToolMove, atype: actionMove}},
 			{Button: &ToolButton{label: "R:Crop", tool: ToolCrop, atype: actionCrop}},
 			{Button: &ToolButton{label: "B:Draw", tool: ToolDraw, atype: actionDraw}},
 			{Button: &ToolButton{label: "O:Circle", tool: ToolCircle, atype: actionDraw}},
@@ -1705,25 +1183,6 @@ func main() {
 			}
 			rgba := image.NewRGBA(img.Bounds())
 			draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-			tabs[current].Components = append(tabs[current].Components, &ImageComponent{Img: rgba, Pos: image.Point{}, Image: true})
-			message = "pasted"
-			log.Print(message)
-			messageUntil = time.Now().Add(2 * time.Second)
-		})
-
-		register("pasteNew", shortcutList{{Rune: 'v', Modifiers: key.ModControl | key.ModShift}}, func() {
-			out, err := exec.Command("wl-paste", "--no-newline", "--type", "image/png").Output()
-			if err != nil {
-				log.Printf("paste: %v", err)
-				return
-			}
-			img, err := png.Decode(bytes.NewReader(out))
-			if err != nil {
-				log.Printf("paste decode: %v", err)
-				return
-			}
-			rgba := image.NewRGBA(img.Bounds())
-			draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
 			tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
 			current = len(tabs) - 1
 			message = "pasted new tab"
@@ -1741,9 +1200,8 @@ func main() {
 		})
 
 		register("copy", shortcutList{{Rune: 'c', Modifiers: key.ModControl}}, func() {
-			img := flatten(&tabs[current])
 			var buf bytes.Buffer
-			png.Encode(&buf, img)
+			png.Encode(&buf, tabs[current].Image)
 			cmd := exec.Command("wl-copy", "--type", "image/png")
 			cmd.Stdin = &buf
 			if err := cmd.Run(); err != nil {
@@ -1761,8 +1219,7 @@ func main() {
 				log.Printf("save: %v", err)
 				return
 			}
-			img := flatten(&tabs[current])
-			png.Encode(out, img)
+			png.Encode(out, tabs[current].Image)
 			out.Close()
 			message = fmt.Sprintf("saved %s", *output)
 			log.Print(message)
@@ -1770,17 +1227,9 @@ func main() {
 		})
 
 		register("textdone", shortcutList{{Code: key.CodeReturnEnter}}, func() {
-			d := &font.Drawer{Face: textFaces[textSizeIdx]}
-			w := d.MeasureString(textInput).Ceil()
-			metrics := textFaces[textSizeIdx].Metrics()
-			h := metrics.Ascent.Ceil() + metrics.Descent.Ceil()
-			img := image.NewRGBA(image.Rect(0, 0, w, h))
-			d = &font.Drawer{Dst: img, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
-			d.Dot = fixed.P(0, metrics.Ascent.Ceil())
+			d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+			d.Dot = fixed.P(textPos.X, textPos.Y)
 			d.DrawString(textInput)
-			pos := image.Pt(textPos.X, textPos.Y-metrics.Ascent.Ceil())
-			comp := &ImageComponent{Img: img, Pos: pos, Image: false}
-			tabs[current].Components = append(tabs[current].Components, comp)
 			textInputActive = false
 		})
 
@@ -1788,7 +1237,7 @@ func main() {
 			textInputActive = false
 		})
 
-		register("crop", shortcutList{{Code: key.CodeReturnEnter}, {Rune: '\r', Code: key.CodeReturnEnter}}, func() {
+		register("crop", shortcutList{{Code: key.CodeReturnEnter}}, func() {
 			if tool == ToolCrop && !cropRect.Empty() {
 				cropped := cropImage(tabs[current].Image, cropRect)
 				tabs[current].Image = cropped
@@ -1798,7 +1247,7 @@ func main() {
 			}
 		})
 
-		register("croptab", shortcutList{{Code: key.CodeReturnEnter, Modifiers: key.ModControl}, {Rune: '\r', Code: key.CodeReturnEnter, Modifiers: key.ModControl}}, func() {
+		register("croptab", shortcutList{{Code: key.CodeReturnEnter, Modifiers: key.ModControl}}, func() {
 			if tool == ToolCrop && !cropRect.Empty() {
 				cropped := cropImage(tabs[current].Image, cropRect)
 				off := tabs[current].Offset.Add(cropRect.Min)
@@ -1858,8 +1307,6 @@ func main() {
 					message:         message,
 					messageUntil:    messageUntil,
 					handleShortcut:  handleShortcut,
-					selected:        selectedComp,
-					preview:         previewComp,
 				}
 				select {
 				case paintCh <- st:
@@ -2015,55 +1462,14 @@ func main() {
 
 				mx := int((float64(e.X)-float64(baseRect.Min.X))/tabs[current].Zoom) - tabs[current].Offset.X
 				my := int((float64(e.Y)-float64(baseRect.Min.Y))/tabs[current].Zoom) - tabs[current].Offset.Y
-				if e.Button == mouse.ButtonLeft || e.Button == mouse.ButtonRight {
+				if e.Button == mouse.ButtonLeft {
 					if e.Direction == mouse.DirPress {
 						act := actionOfTool(tool)
 						switch tool {
-						case ToolView:
+						case ToolMove:
 							active = act
 							moveStart = image.Point{int(e.X), int(e.Y)}
-						case ToolModify:
-							active = act
-							moveStart = image.Point{int(e.X), int(e.Y)}
-							selectedComp = -1
-							p := image.Point{mx, my}
-							for i := len(tabs[current].Components) - 1; i >= 0; i-- {
-								c := tabs[current].Components[i]
-								if c.Contains(p) {
-									selectedComp = i
-									break
-								}
-							}
-							if selectedComp >= 0 {
-								comp := tabs[current].Components[selectedComp]
-								tabs[current].Components = append(tabs[current].Components[:selectedComp], tabs[current].Components[selectedComp+1:]...)
-								if e.Button == mouse.ButtonRight {
-									tabs[current].Components = append([]Component{comp}, tabs[current].Components...)
-									selectedComp = 0
-								} else {
-									tabs[current].Components = append(tabs[current].Components, comp)
-									selectedComp = len(tabs[current].Components) - 1
-								}
-								if hrProvider, ok := comp.(interface{ HandleRects() []image.Rectangle }); ok {
-									for i, hr := range hrProvider.HandleRects() {
-										if p.In(hr) {
-											active = actionCrop
-											compMode = cropAction(i + int(cropResizeTL))
-											compStartRect = comp.Bounds()
-											if lc, ok := comp.(*LineComponent); ok {
-												compStartA = lc.Start
-												compStartB = lc.End
-											}
-											if ac, ok := comp.(*ArrowComponent); ok {
-												compStartA = ac.Start
-												compStartB = ac.End
-											}
-											moveStart = p
-											break
-										}
-									}
-								}
-							}
+							moveOffset = tabs[current].Offset
 						case ToolCrop:
 							p := image.Point{mx, my}
 							action := cropNone
@@ -2088,7 +1494,6 @@ func main() {
 							w.Send(paint.Event{})
 						case ToolDraw:
 							active = act
-							drawPoints = []image.Point{{mx, my}}
 							last = image.Point{mx, my}
 						case ToolCircle, ToolLine, ToolArrow, ToolRect, ToolNumber:
 							active = act
@@ -2140,54 +1545,115 @@ func main() {
 							}
 							cropRect = r
 						}
-						if active == actionCrop && tool == ToolModify && selectedComp >= 0 {
-							dx := mx - moveStart.X
-							dy := my - moveStart.Y
-							if rc, ok := tabs[current].Components[selectedComp].(interface {
-								Resize(cropAction, image.Rectangle, int, int)
-							}); ok {
-								rc.Resize(compMode, compStartRect, dx, dy)
-							}
-						}
 						if active == actionDraw && tool != ToolCrop {
-							var comp Component
 							switch tool {
 							case ToolDraw:
-								drawPoints = append(drawPoints, image.Pt(mx, my))
-								comp = freehandComponent(drawPoints, col, widths[tabs[current].WidthIdx])
-							case ToolLine:
-								comp = &LineComponent{Start: last, End: image.Pt(mx, my), Col: col, Width: widths[tabs[current].WidthIdx]}
+								minX, minY := last.X, last.Y
+								maxX, maxY := mx, my
+								if mx < minX {
+									minX = mx
+								}
+								if my < minY {
+									minY = my
+								}
+								if last.X > maxX {
+									maxX = last.X
+								}
+								if last.Y > maxY {
+									maxY = last.Y
+								}
+								br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+								shift := ensureCanvasContains(&tabs[current], br)
+								last = last.Sub(shift)
+								mx -= shift.X
+								my -= shift.Y
+								drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
 							case ToolCircle:
 								r := int(math.Hypot(float64(mx-last.X), float64(my-last.Y)))
-								comp = &CircleComponent{Center: last, Radius: r, Col: col, Width: widths[tabs[current].WidthIdx]}
+								br := image.Rect(last.X-r-widths[tabs[current].WidthIdx], last.Y-r-widths[tabs[current].WidthIdx], last.X+r+widths[tabs[current].WidthIdx]+1, last.Y+r+widths[tabs[current].WidthIdx]+1)
+								shift := ensureCanvasContains(&tabs[current], br)
+								last = last.Sub(shift)
+								mx -= shift.X
+								my -= shift.Y
+								drawCircle(tabs[current].Image, last.X, last.Y, r, col, widths[tabs[current].WidthIdx])
+							case ToolLine:
+								minX, minY := last.X, last.Y
+								maxX, maxY := mx, my
+								if mx < minX {
+									minX = mx
+								}
+								if my < minY {
+									minY = my
+								}
+								if last.X > maxX {
+									maxX = last.X
+								}
+								if last.Y > maxY {
+									maxY = last.Y
+								}
+								br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+								shift := ensureCanvasContains(&tabs[current], br)
+								last = last.Sub(shift)
+								mx -= shift.X
+								my -= shift.Y
+								drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
 							case ToolArrow:
-								comp = &ArrowComponent{Start: last, End: image.Pt(mx, my), Col: col, Width: widths[tabs[current].WidthIdx]}
+								minX, minY := last.X, last.Y
+								maxX, maxY := mx, my
+								if mx < minX {
+									minX = mx
+								}
+								if my < minY {
+									minY = my
+								}
+								if last.X > maxX {
+									maxX = last.X
+								}
+								if last.Y > maxY {
+									maxY = last.Y
+								}
+								br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 10)
+								shift := ensureCanvasContains(&tabs[current], br)
+								last = last.Sub(shift)
+								mx -= shift.X
+								my -= shift.Y
+								drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
 							case ToolRect:
-								comp = &RectComponent{Rect: image.Rect(last.X, last.Y, mx, my), Col: col, Width: widths[tabs[current].WidthIdx]}
+								minX, minY := last.X, last.Y
+								maxX, maxY := mx, my
+								if mx < minX {
+									minX = mx
+								}
+								if my < minY {
+									minY = my
+								}
+								if last.X > maxX {
+									maxX = last.X
+								}
+								if last.Y > maxY {
+									maxY = last.Y
+								}
+								br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+								shift := ensureCanvasContains(&tabs[current], br)
+								last = last.Sub(shift)
+								mx -= shift.X
+								my -= shift.Y
+								drawRect(tabs[current].Image, image.Rect(last.X, last.Y, mx, my), col, widths[tabs[current].WidthIdx])
 							case ToolNumber:
 								s := numberSizes[numberIdx]
-								comp = &NumberComponent{Pos: image.Pt(mx, my), Num: tabs[current].NextNumber, Size: s, Col: col}
+								br := image.Rect(mx-s, my-s, mx+s, my+s)
+								shift := ensureCanvasContains(&tabs[current], br)
+								mx -= shift.X
+								my -= shift.Y
+								drawNumberBox(tabs[current].Image, mx, my, tabs[current].NextNumber, col, s)
 								tabs[current].NextNumber++
 							}
-							if comp != nil {
-								tabs[current].Components = append(tabs[current].Components, comp)
-							}
-							previewComp = nil
-							drawPoints = nil
 							w.Send(paint.Event{})
 						}
-						if active == actionMove && tool == ToolView {
+						if active == actionMove && tool == ToolMove {
 							dx := int(float64(int(e.X)-moveStart.X) / tabs[current].Zoom)
 							dy := int(float64(int(e.Y)-moveStart.Y) / tabs[current].Zoom)
-							tabs[current].Offset = tabs[current].Offset.Add(image.Pt(dx, dy))
-							moveStart = image.Point{int(e.X), int(e.Y)}
-							w.Send(paint.Event{})
-						}
-						if active == actionMove && tool == ToolModify && selectedComp >= 0 {
-							dx := int(float64(int(e.X)-moveStart.X) / tabs[current].Zoom)
-							dy := int(float64(int(e.Y)-moveStart.Y) / tabs[current].Zoom)
-							tabs[current].Components[selectedComp].MoveBy(dx, dy)
-							moveStart = image.Point{int(e.X), int(e.Y)}
+							tabs[current].Offset = moveOffset.Add(image.Pt(dx, dy))
 							w.Send(paint.Event{})
 						}
 						active = actionNone
@@ -2232,50 +1698,34 @@ func main() {
 					w.Send(paint.Event{})
 				}
 
-				if active == actionCrop && tool == ToolModify && e.Direction == mouse.DirNone && selectedComp >= 0 {
-					dx := mx - moveStart.X
-					dy := my - moveStart.Y
-					if rc, ok := tabs[current].Components[selectedComp].(interface {
-						Resize(cropAction, image.Rectangle, int, int)
-					}); ok {
-						rc.Resize(compMode, compStartRect, dx, dy)
+				if active == actionDraw && tool == ToolDraw && e.Direction == mouse.DirNone {
+					p := image.Point{mx, my}
+					minX, minY := last.X, last.Y
+					maxX, maxY := p.X, p.Y
+					if p.X < minX {
+						minX = p.X
 					}
+					if p.Y < minY {
+						minY = p.Y
+					}
+					if last.X > maxX {
+						maxX = last.X
+					}
+					if last.Y > maxY {
+						maxY = last.Y
+					}
+					br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+					shift := ensureCanvasContains(&tabs[current], br)
+					last = last.Sub(shift)
+					p = p.Sub(shift)
+					drawLine(tabs[current].Image, last.X, last.Y, p.X, p.Y, col, widths[tabs[current].WidthIdx])
+					last = p
 					w.Send(paint.Event{})
 				}
-
-				if active == actionDraw && tool != ToolCrop && e.Direction == mouse.DirNone {
-					var pc Component
-					switch tool {
-					case ToolDraw:
-						drawPoints = append(drawPoints, image.Pt(mx, my))
-						pc = freehandComponent(drawPoints, col, widths[tabs[current].WidthIdx])
-					case ToolLine:
-						pc = &LineComponent{Start: last, End: image.Pt(mx, my), Col: col, Width: widths[tabs[current].WidthIdx]}
-					case ToolCircle:
-						r := int(math.Hypot(float64(mx-last.X), float64(my-last.Y)))
-						pc = &CircleComponent{Center: last, Radius: r, Col: col, Width: widths[tabs[current].WidthIdx]}
-					case ToolArrow:
-						pc = &ArrowComponent{Start: last, End: image.Pt(mx, my), Col: col, Width: widths[tabs[current].WidthIdx]}
-					case ToolRect:
-						pc = &RectComponent{Rect: image.Rect(last.X, last.Y, mx, my), Col: col, Width: widths[tabs[current].WidthIdx]}
-					case ToolNumber:
-						pc = &NumberComponent{Pos: image.Pt(mx, my), Num: tabs[current].NextNumber, Size: numberSizes[numberIdx], Col: col}
-					}
-					previewComp = pc
-					w.Send(paint.Event{})
-				}
-				if active == actionMove && tool == ToolView && e.Direction == mouse.DirNone {
+				if active == actionMove && tool == ToolMove && e.Direction == mouse.DirNone {
 					dx := int(float64(int(e.X)-moveStart.X) / tabs[current].Zoom)
 					dy := int(float64(int(e.Y)-moveStart.Y) / tabs[current].Zoom)
-					tabs[current].Offset = tabs[current].Offset.Add(image.Pt(dx, dy))
-					moveStart = image.Point{int(e.X), int(e.Y)}
-					w.Send(paint.Event{})
-				}
-				if active == actionMove && tool == ToolModify && e.Direction == mouse.DirNone && selectedComp >= 0 {
-					dx := int(float64(int(e.X)-moveStart.X) / tabs[current].Zoom)
-					dy := int(float64(int(e.Y)-moveStart.Y) / tabs[current].Zoom)
-					tabs[current].Components[selectedComp].MoveBy(dx, dy)
-					moveStart = image.Point{int(e.X), int(e.Y)}
+					tabs[current].Offset = moveOffset.Add(image.Pt(dx, dy))
 					w.Send(paint.Event{})
 				}
 			case key.Event:
@@ -2286,14 +1736,12 @@ func main() {
 							d := &font.Drawer{Face: textFaces[textSizeIdx]}
 							width := d.MeasureString(textInput).Ceil()
 							metrics := textFaces[textSizeIdx].Metrics()
-							h := metrics.Ascent.Ceil() + metrics.Descent.Ceil()
-							img := image.NewRGBA(image.Rect(0, 0, width, h))
-							d = &font.Drawer{Dst: img, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
-							d.Dot = fixed.P(0, metrics.Ascent.Ceil())
+							br := image.Rect(textPos.X, textPos.Y-metrics.Ascent.Ceil(), textPos.X+width, textPos.Y+metrics.Descent.Ceil())
+							shift := ensureCanvasContains(&tabs[current], br)
+							textPos = textPos.Sub(shift)
+							d = &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+							d.Dot = fixed.P(textPos.X, textPos.Y)
 							d.DrawString(textInput)
-							pos := image.Pt(textPos.X, textPos.Y-metrics.Ascent.Ceil())
-							comp := &ImageComponent{Img: img, Pos: pos, Image: false}
-							tabs[current].Components = append(tabs[current].Components, comp)
 							textInputActive = false
 							w.Send(paint.Event{})
 							continue
@@ -2333,19 +1781,9 @@ func main() {
 					}
 					switch e.Rune {
 					case 'm', 'M':
-						tool = ToolModify
+						tool = ToolMove
 						active = actionNone
 						w.Send(paint.Event{})
-					case 'v', 'V':
-						tool = ToolView
-						active = actionNone
-						w.Send(paint.Event{})
-					case 'e', 'E':
-						if tool == ToolModify && selectedComp >= 0 {
-							tabs[current].Components = append(tabs[current].Components[:selectedComp], tabs[current].Components[selectedComp+1:]...)
-							selectedComp = -1
-							w.Send(paint.Event{})
-						}
 					case 'r', 'R':
 						tool = ToolCrop
 						active = actionNone
@@ -2408,39 +1846,23 @@ func main() {
 					case -1:
 						switch e.Code {
 						case key.CodeLeftArrow:
-							if tool == ToolView {
+							if tool == ToolMove {
 								tabs[current].Offset.X -= 10
 								w.Send(paint.Event{})
 							}
-							if tool == ToolModify && selectedComp >= 0 {
-								tabs[current].Components[selectedComp].MoveBy(-10, 0)
-								w.Send(paint.Event{})
-							}
 						case key.CodeRightArrow:
-							if tool == ToolView {
+							if tool == ToolMove {
 								tabs[current].Offset.X += 10
 								w.Send(paint.Event{})
 							}
-							if tool == ToolModify && selectedComp >= 0 {
-								tabs[current].Components[selectedComp].MoveBy(10, 0)
-								w.Send(paint.Event{})
-							}
 						case key.CodeUpArrow:
-							if tool == ToolView {
+							if tool == ToolMove {
 								tabs[current].Offset.Y -= 10
 								w.Send(paint.Event{})
 							}
-							if tool == ToolModify && selectedComp >= 0 {
-								tabs[current].Components[selectedComp].MoveBy(0, -10)
-								w.Send(paint.Event{})
-							}
 						case key.CodeDownArrow:
-							if tool == ToolView {
+							if tool == ToolMove {
 								tabs[current].Offset.Y += 10
-								w.Send(paint.Event{})
-							}
-							if tool == ToolModify && selectedComp >= 0 {
-								tabs[current].Components[selectedComp].MoveBy(0, 10)
 								w.Send(paint.Event{})
 							}
 						}
