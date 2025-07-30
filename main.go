@@ -46,6 +46,7 @@ const (
 	ToolCircle
 	ToolLine
 	ToolArrow
+	ToolRect
 	ToolNumber
 )
 
@@ -196,7 +197,7 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, z float64) {
 
 func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 	y := tabHeight
-	tools := []string{"Move", "Crop", "Draw", "Circle", "Line", "Arrow", "Num"}
+	tools := []string{"Move", "Crop", "Draw", "Circle", "Line", "Arrow", "Rect", "Num"}
 	for i, name := range tools {
 		c := color.RGBA{200, 200, 200, 255}
 		if Tool(i) == tool {
@@ -229,7 +230,7 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 		}
 	}
 
-	if tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow {
+	if tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow || tool == ToolRect {
 		y += 4
 		col := palette[colIdx]
 		for i, w := range widths {
@@ -748,13 +749,13 @@ func main() {
 				if e.Button == mouse.ButtonLeft && int(e.X) < toolbarWidth && int(e.Y) >= tabHeight {
 					pos := int(e.Y) - tabHeight
 					idx := pos / 24
-					if idx < 7 {
+					if idx < 8 {
 						tool = Tool(idx)
 						cropping = false
 						w.Send(paint.Event{})
 						continue
 					}
-					pos -= 7 * 24
+					pos -= 8 * 24
 					pos -= 4
 					paletteCols := toolbarWidth / 18
 					rows := (len(palette) + paletteCols - 1) / paletteCols
@@ -772,7 +773,7 @@ func main() {
 					}
 					pos -= paletteHeight
 					pos -= 4
-					if (tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow) && pos >= 0 {
+					if (tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow || tool == ToolRect) && pos >= 0 {
 						widx := pos / 16
 						if widx >= 0 && widx < len(widths) {
 							tabs[current].WidthIdx = widx
@@ -830,7 +831,7 @@ func main() {
 						case ToolDraw:
 							drawing = true
 							last = image.Point{mx, my}
-						case ToolCircle, ToolLine, ToolArrow, ToolNumber:
+						case ToolCircle, ToolLine, ToolArrow, ToolRect, ToolNumber:
 							drawing = true
 							last = image.Point{mx, my}
 						}
@@ -944,6 +945,27 @@ func main() {
 								mx -= shift.X
 								my -= shift.Y
 								drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
+							case ToolRect:
+								minX, minY := last.X, last.Y
+								maxX, maxY := mx, my
+								if mx < minX {
+									minX = mx
+								}
+								if my < minY {
+									minY = my
+								}
+								if last.X > maxX {
+									maxX = last.X
+								}
+								if last.Y > maxY {
+									maxY = last.Y
+								}
+								br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+								shift := ensureCanvasContains(&tabs[current], br)
+								last = last.Sub(shift)
+								mx -= shift.X
+								my -= shift.Y
+								drawRect(tabs[current].Image, image.Rect(last.X, last.Y, mx, my), col, widths[tabs[current].WidthIdx])
 							case ToolNumber:
 								s := numberSizes[numberIdx]
 								br := image.Rect(mx-s, my-s, mx+s, my+s)
