@@ -111,6 +111,7 @@ var checkerDark = color.RGBA{192, 192, 192, 255}
 var textSizes = []float64{12, 16, 20, 24, 32}
 var textFaces []font.Face
 var textSizeIdx int
+var messageFace font.Face
 
 func init() {
 	f, err := opentype.Parse(goregular.TTF)
@@ -123,6 +124,10 @@ func init() {
 			log.Fatalf("font face: %v", err)
 		}
 		textFaces = append(textFaces, face)
+	}
+	messageFace, err = opentype.NewFace(f, &opentype.FaceOptions{Size: 48, DPI: 72, Hinting: font.HintingFull})
+	if err != nil {
+		log.Fatalf("font face: %v", err)
 	}
 }
 
@@ -776,10 +781,15 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 	}
 
 	if st.message != "" && time.Now().Before(st.messageUntil) {
-		d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
+		d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: messageFace}
 		wmsg := d.MeasureString(st.message).Ceil()
-		px := toolbarWidth + (dst.Dx()-wmsg)/2
-		py := tabHeight + dst.Dy()
+		ascent := messageFace.Metrics().Ascent.Ceil()
+		descent := messageFace.Metrics().Descent.Ceil()
+		px := (st.width - wmsg) / 2
+		py := (st.height-ascent-descent)/2 + ascent
+		rect := image.Rect(px-8, py-ascent-8, px+wmsg+8, py+descent+8)
+		draw.Draw(b.RGBA(), rect, &image.Uniform{color.RGBA{255, 255, 255, 230}}, image.Point{}, draw.Over)
+		drawRect(b.RGBA(), rect, color.Black, 2)
 		d.Dot = fixed.P(px, py)
 		d.DrawString(st.message)
 	}
@@ -906,6 +916,7 @@ func main() {
 				current = len(tabs) - 1
 				tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
 				message = "captured screenshot"
+				log.Print(message)
 				messageUntil = time.Now().Add(2 * time.Second)
 			case "dup":
 				dup := image.NewRGBA(tabs[current].Image.Bounds())
@@ -928,6 +939,7 @@ func main() {
 				tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
 				current = len(tabs) - 1
 				message = "pasted new tab"
+				log.Print(message)
 				messageUntil = time.Now().Add(2 * time.Second)
 			case "delete":
 				if len(tabs) > 1 {
@@ -945,6 +957,7 @@ func main() {
 					log.Printf("copy: %v", err)
 				} else {
 					message = "image copied to clipboard"
+					log.Print(message)
 					messageUntil = time.Now().Add(2 * time.Second)
 				}
 			case "save":
@@ -956,6 +969,7 @@ func main() {
 				png.Encode(out, tabs[current].Image)
 				out.Close()
 				message = fmt.Sprintf("saved %s", *output)
+				log.Print(message)
 				messageUntil = time.Now().Add(2 * time.Second)
 			case "textdone":
 				d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
@@ -1040,6 +1054,11 @@ func main() {
 				}
 				lastPaint = st
 			case mouse.Event:
+				if message != "" && time.Now().Before(messageUntil) && e.Direction == mouse.DirPress {
+					messageUntil = time.Time{}
+					w.Send(paint.Event{})
+					continue
+				}
 				if int(e.Y) >= height-bottomHeight {
 					p := image.Point{int(e.X), int(e.Y)}
 					hoverShortcut = -1
@@ -1498,6 +1517,7 @@ func main() {
 						if !confirmDelete {
 							confirmDelete = true
 							message = "press D again to delete"
+							log.Print(message)
 							messageUntil = time.Now().Add(2 * time.Second)
 							w.Send(paint.Event{})
 							continue
