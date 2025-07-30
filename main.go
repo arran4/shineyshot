@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	xdraw "golang.org/x/image/draw"
@@ -19,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -38,6 +40,10 @@ const (
 )
 
 var toolbarWidth = 48
+
+// frameDropThreshold specifies how many consecutive frames can be canceled
+// before a draw is allowed to complete to keep the UI responsive.
+const frameDropThreshold = 10
 
 type Tool int
 
@@ -114,6 +120,7 @@ var checkerDark = color.RGBA{192, 192, 192, 255}
 var textSizes = []float64{12, 16, 20, 24, 32}
 var textFaces []font.Face
 var textSizeIdx int
+var messageFace font.Face
 
 func init() {
 	f, err := opentype.Parse(goregular.TTF)
@@ -126,6 +133,10 @@ func init() {
 			log.Fatalf("font face: %v", err)
 		}
 		textFaces = append(textFaces, face)
+	}
+	messageFace, err = opentype.NewFace(f, &opentype.FaceOptions{Size: 48, DPI: 72, Hinting: font.HintingFull})
+	if err != nil {
+		log.Fatalf("font face: %v", err)
 	}
 }
 
@@ -869,6 +880,114 @@ func captureScreenshot() (*image.RGBA, error) {
 	return nil, fmt.Errorf("screenshot failed")
 }
 
+type paintState struct {
+	width, height   int
+	tabs            []Tab
+	current         int
+	tool            Tool
+	colorIdx        int
+	numberIdx       int
+	cropping        bool
+	cropRect        image.Rectangle
+	cropStart       image.Point
+	textInputActive bool
+	textInput       string
+	textPos         image.Point
+	message         string
+	messageUntil    time.Time
+}
+
+func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintState) {
+	b, err := s.NewBuffer(image.Point{st.width, st.height})
+	if err != nil {
+		log.Printf("new buffer: %v", err)
+		return
+	}
+	defer b.Release()
+
+	drawCheckerboard(b.RGBA(), b.Bounds(), 8, checkerLight, checkerDark)
+	if ctx.Err() != nil {
+		return
+	}
+
+	img := st.tabs[st.current].Image
+	zoom := st.tabs[st.current].Zoom
+	base := imageRect(img, st.width, st.height, zoom)
+	off := st.tabs[st.current].Offset
+	dst := base.Add(image.Pt(int(float64(off.X)*zoom), int(float64(off.Y)*zoom)))
+	xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, img.Bounds(), draw.Over, nil)
+	if ctx.Err() != nil {
+		return
+	}
+
+	if st.tool == ToolCrop && (st.cropping || !st.cropRect.Empty()) {
+		sel := st.cropRect
+		if st.cropping {
+			sel = image.Rect(st.cropStart.X, st.cropStart.Y, st.cropStart.X, st.cropStart.Y).Union(sel)
+		}
+		r := image.Rect(
+			dst.Min.X+int(float64(sel.Min.X)*zoom),
+			dst.Min.Y+int(float64(sel.Min.Y)*zoom),
+			dst.Min.X+int(float64(sel.Max.X)*zoom),
+			dst.Min.Y+int(float64(sel.Max.Y)*zoom),
+		)
+		drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
+		for _, hr := range cropHandleRects(r) {
+			if ctx.Err() != nil {
+				return
+			}
+			draw.Draw(b.RGBA(), hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
+			drawRect(b.RGBA(), hr, color.Black, 1)
+			drawDashedRect(b.RGBA(), hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
+		}
+	}
+
+	if ctx.Err() != nil {
+		return
+	}
+
+	drawTabs(b.RGBA(), st.tabs, st.current)
+	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx)
+	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom)
+
+	if ctx.Err() != nil {
+		return
+	}
+
+	if st.message != "" && time.Now().Before(st.messageUntil) {
+		d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: messageFace}
+		wmsg := d.MeasureString(st.message).Ceil()
+		ascent := messageFace.Metrics().Ascent.Ceil()
+		descent := messageFace.Metrics().Descent.Ceil()
+		px := (st.width - wmsg) / 2
+		py := (st.height-ascent-descent)/2 + ascent
+		rect := image.Rect(px-8, py-ascent-8, px+wmsg+8, py+descent+8)
+		draw.Draw(b.RGBA(), rect, &image.Uniform{color.RGBA{255, 255, 255, 230}}, image.Point{}, draw.Over)
+		drawRect(b.RGBA(), rect, color.Black, 2)
+		d.Dot = fixed.P(px, py)
+		d.DrawString(st.message)
+	}
+
+	if ctx.Err() != nil {
+		return
+	}
+
+	if st.textInputActive {
+		d := &font.Drawer{Dst: b.RGBA(), Src: image.NewUniform(palette[st.colorIdx]), Face: textFaces[textSizeIdx]}
+		px := dst.Min.X + int(float64(st.textPos.X)*zoom)
+		py := dst.Min.Y + int(float64(st.textPos.Y)*zoom)
+		d.Dot = fixed.P(px, py)
+		d.DrawString(st.textInput + "|")
+	}
+
+	if ctx.Err() != nil {
+		return
+	}
+
+	w.Upload(image.Point{}, b, b.Bounds())
+	w.Publish()
+}
+
 func main() {
 	screenshot := flag.String("screenshot", "", "existing screenshot to annotate")
 	output := flag.String("output", "annotated.png", "output file path")
@@ -910,16 +1029,6 @@ func main() {
 			log.Fatalf("new window: %v", err)
 		}
 		defer w.Release()
-		var bufs [2]screen.Buffer
-		for i := 0; i < 2; i++ {
-			var err error
-			bufs[i], err = s.NewBuffer(image.Point{width, height})
-			if err != nil {
-				log.Fatalf("new buffer: %v", err)
-			}
-			defer bufs[i].Release()
-		}
-		bufIdx := 0
 
 		tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2}}
 		current := 0
@@ -941,6 +1050,28 @@ func main() {
 		tool := ToolMove
 		colorIdx := 2 // red
 		numberIdx := 0
+		var paintMu sync.Mutex
+		var paintCancel context.CancelFunc
+		var dropCount int
+		var lastPaint paintState
+		_ = lastPaint
+		paintCh := make(chan paintState, 1)
+		go func() {
+			for st := range paintCh {
+				ctx, cancel := context.WithCancel(context.Background())
+				paintMu.Lock()
+				paintCancel = cancel
+				paintMu.Unlock()
+				drawFrame(ctx, s, w, st)
+				paintMu.Lock()
+				paintCancel = nil
+				if ctx.Err() == nil {
+					lastPaint = st
+					dropCount = 0
+				}
+				paintMu.Unlock()
+			}
+		}()
 
 		col := palette[colorIdx]
 		tabs[current].Zoom = fitZoom(rgba, width, height)
@@ -976,6 +1107,7 @@ func main() {
 				current = len(tabs) - 1
 				tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
 				message = "captured screenshot"
+				log.Print(message)
 				messageUntil = time.Now().Add(2 * time.Second)
 			case "dup":
 				dup := image.NewRGBA(tabs[current].Image.Bounds())
@@ -998,6 +1130,7 @@ func main() {
 				tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
 				current = len(tabs) - 1
 				message = "pasted new tab"
+				log.Print(message)
 				messageUntil = time.Now().Add(2 * time.Second)
 			case "delete":
 				if len(tabs) > 1 {
@@ -1015,6 +1148,7 @@ func main() {
 					log.Printf("copy: %v", err)
 				} else {
 					message = "image copied to clipboard"
+					log.Print(message)
 					messageUntil = time.Now().Add(2 * time.Second)
 				}
 			case "save":
@@ -1026,6 +1160,7 @@ func main() {
 				png.Encode(out, tabs[current].Image)
 				out.Close()
 				message = fmt.Sprintf("saved %s", *output)
+				log.Print(message)
 				messageUntil = time.Now().Add(2 * time.Second)
 			case "textdone":
 				d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
@@ -1065,21 +1200,19 @@ func main() {
 			switch e := e.(type) {
 			case lifecycle.Event:
 				if e.To == lifecycle.StageDead {
+					paintMu.Lock()
+					if paintCancel != nil {
+						paintCancel()
+					}
+					paintMu.Unlock()
 					return
 				}
 			case size.Event:
 				width = e.WidthPx
 				height = e.HeightPx
-				for i := 0; i < 2; i++ {
-					bufs[i].Release()
-					var err error
-					bufs[i], err = s.NewBuffer(image.Point{width, height})
-					if err != nil {
-						log.Fatalf("new buffer: %v", err)
-					}
-				}
 				w.Send(paint.Event{})
 			case paint.Event:
+ /* New Merge into rest please -- merge conflict this belongs elsewhere.
 				b := bufs[bufIdx]
 				bufIdx = 1 - bufIdx
 
@@ -1134,18 +1267,45 @@ func main() {
 					py := tabHeight + dst.Dy()
 					d.Dot = fixed.P(px, py)
 					d.DrawString(message)
+          */
+				paintMu.Lock()
+				if paintCancel != nil {
+					if dropCount < frameDropThreshold {
+						paintCancel()
+						dropCount++
+					}
 				}
-				// text input overlay
-				if textInputActive {
-					d := &font.Drawer{Dst: b.RGBA(), Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
-					px := dst.Min.X + int(float64(textPos.X)*tabs[current].Zoom)
-					py := dst.Min.Y + int(float64(textPos.Y)*tabs[current].Zoom)
-					d.Dot = fixed.P(px, py)
-					d.DrawString(textInput + "|")
+				paintMu.Unlock()
+				st := paintState{
+					width:           width,
+					height:          height,
+					tabs:            tabs,
+					current:         current,
+					tool:            tool,
+					colorIdx:        colorIdx,
+					numberIdx:       numberIdx,
+					cropping:        cropping,
+					cropRect:        cropRect,
+					cropStart:       cropStart,
+					textInputActive: textInputActive,
+					textInput:       textInput,
+					textPos:         textPos,
+					message:         message,
+					messageUntil:    messageUntil,
 				}
-				w.Upload(image.Point{}, b, b.Bounds())
-				w.Publish()
+				select {
+				case paintCh <- st:
+				default:
+					<-paintCh
+					paintCh <- st
+				}
+				lastPaint = st
 			case mouse.Event:
+				if message != "" && time.Now().Before(messageUntil) && e.Direction == mouse.DirPress {
+					messageUntil = time.Time{}
+					w.Send(paint.Event{})
+					continue
+				}
 				if int(e.Y) >= height-bottomHeight {
 					p := image.Point{int(e.X), int(e.Y)}
 					hoverShortcut = -1
@@ -1600,6 +1760,7 @@ func main() {
 						if !confirmDelete {
 							confirmDelete = true
 							message = "press D again to delete"
+							log.Print(message)
 							messageUntil = time.Now().Add(2 * time.Second)
 							w.Send(paint.Event{})
 							continue
@@ -1663,6 +1824,11 @@ func main() {
 							}
 						}
 					case 'q', 'Q':
+						paintMu.Lock()
+						if paintCancel != nil {
+							paintCancel()
+						}
+						paintMu.Unlock()
 						return
 					case 'n', 'N':
 						if e.Modifiers&key.ModControl != 0 {
