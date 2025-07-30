@@ -177,6 +177,16 @@ func drawCheckerboard(dst *image.RGBA, rect image.Rectangle, size int, light, da
 	}
 }
 
+// drawBackdrop fills dst with a cached checkerboard pattern.
+func drawBackdrop(dst *image.RGBA) {
+	b := dst.Bounds()
+	if backdropCache == nil || backdropCache.Bounds() != b {
+		backdropCache = image.NewRGBA(b)
+		drawCheckerboard(backdropCache, backdropCache.Bounds(), 8, checkerLight, checkerDark)
+	}
+	draw.Draw(dst, b, backdropCache, image.Point{}, draw.Src)
+}
+
 var widths = []int{1, 2, 4, 6, 8}
 var numberSizes = []int{8, 12, 16, 20, 24}
 
@@ -344,6 +354,9 @@ var toolButtons []*CacheButton
 var paletteRects []image.Rectangle
 var widthRects []image.Rectangle
 var numberRects []image.Rectangle
+
+// backdropCache holds a cached checkerboard backdrop.
+var backdropCache *image.RGBA
 
 // keyboardAction maps a keyboard shortcut to the action name.
 var keyboardAction = map[KeyShortcut]string{}
@@ -923,7 +936,7 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 	}
 	defer b.Release()
 
-	drawCheckerboard(b.RGBA(), b.Bounds(), 8, checkerLight, checkerDark)
+	drawBackdrop(b.RGBA())
 	if ctx.Err() != nil {
 		return
 	}
