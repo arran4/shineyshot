@@ -895,6 +895,7 @@ type paintState struct {
 	textPos         image.Point
 	message         string
 	messageUntil    time.Time
+	handleShortcut  func(string)
 }
 
 func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintState) {
@@ -948,7 +949,7 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 
 	drawTabs(b.RGBA(), st.tabs, st.current)
 	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx)
-	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom)
+	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut)
 
 	if ctx.Err() != nil {
 		return
@@ -1212,62 +1213,6 @@ func main() {
 				height = e.HeightPx
 				w.Send(paint.Event{})
 			case paint.Event:
- /* New Merge into rest please -- merge conflict this belongs elsewhere.
-				b := bufs[bufIdx]
-				bufIdx = 1 - bufIdx
-
-				// clear background
-				drawCheckerboard(b.RGBA(), b.Bounds(), 8, checkerLight, checkerDark)
-
-				// draw the current tab’s image, scaled and offset
-				img := tabs[current].Image
-				zoom := tabs[current].Zoom
-				base := imageRect(img, width, height, zoom)
-				off := tabs[current].Offset
-				dst := base.Add(image.Pt(
-					int(float64(off.X)*zoom),
-					int(float64(off.Y)*zoom),
-				))
-				xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, img.Bounds(), draw.Over, nil)
-
-				// if cropping, draw the selection box (and handles)
-				if tool == ToolCrop && (active == actionCrop || !cropRect.Empty()) {
-					// build the rectangle in image‐coords
-					sel := cropRect
-					if active == actionCrop {
-						sel = image.Rect(cropStart.X, cropStart.Y, cropStart.X, cropStart.Y).Union(sel)
-					}
-					// scale it to screen‐coords
-					r := image.Rect(
-						dst.Min.X+int(float64(sel.Min.X)*tabs[current].Zoom),
-						dst.Min.Y+int(float64(sel.Min.Y)*tabs[current].Zoom),
-						dst.Min.X+int(float64(sel.Max.X)*tabs[current].Zoom),
-						dst.Min.Y+int(float64(sel.Max.Y)*tabs[current].Zoom),
-					)
-					// dashed outline
-					drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
-					// little handles at each corner/edge
-					for _, hr := range cropHandleRects(r) {
-						draw.Draw(b.RGBA(), hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
-						drawRect(b.RGBA(), hr, color.Black, 1)
-						drawDashedRect(b.RGBA(), hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
-					}
-				}
-
-				// UI chrome
-				drawTabs(b.RGBA(), tabs, current)
-				drawToolbar(b.RGBA(), tool, colorIdx, tabs[current].WidthIdx, numberIdx)
-				drawShortcuts(b.RGBA(), width, height, tool, textInputActive, tabs[current].Zoom, handleShortcut)
-
-				// transient message overlay
-				if message != "" && time.Now().Before(messageUntil) {
-					d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: basicfont.Face7x13}
-					w := d.MeasureString(message).Ceil()
-					px := toolbarWidth + (dst.Dx()-w)/2
-					py := tabHeight + dst.Dy()
-					d.Dot = fixed.P(px, py)
-					d.DrawString(message)
-          */
 				paintMu.Lock()
 				if paintCancel != nil {
 					if dropCount < frameDropThreshold {
@@ -1284,7 +1229,7 @@ func main() {
 					tool:            tool,
 					colorIdx:        colorIdx,
 					numberIdx:       numberIdx,
-					cropping:        cropping,
+					cropping:        active == actionCrop,
 					cropRect:        cropRect,
 					cropStart:       cropStart,
 					textInputActive: textInputActive,
@@ -1292,6 +1237,7 @@ func main() {
 					textPos:         textPos,
 					message:         message,
 					messageUntil:    messageUntil,
+					handleShortcut:  handleShortcut,
 				}
 				select {
 				case paintCh <- st:
