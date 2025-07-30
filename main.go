@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/godbus/dbus/v5"
 
@@ -179,6 +180,23 @@ func drawCheckerboard(dst *image.RGBA, rect image.Rectangle, size int, light, da
 var widths = []int{1, 2, 4, 6, 8}
 var numberSizes = []int{8, 12, 16, 20, 24}
 
+// KeyShortcut describes a keyboard combination that triggers an action.
+type KeyShortcut struct {
+	Rune      rune
+	Code      key.Code
+	Modifiers key.Modifiers
+}
+
+// KeyboardShortcuts returns the shortcuts associated with an action.
+type KeyboardShortcuts interface {
+	KeyboardShortcuts() []KeyShortcut
+}
+
+// shortcutList is a helper to easily satisfy the KeyboardShortcuts interface.
+type shortcutList []KeyShortcut
+
+func (s shortcutList) KeyboardShortcuts() []KeyShortcut { return []KeyShortcut(s) }
+
 // ButtonState describes the visual state of a button.
 type ButtonState int
 
@@ -320,6 +338,9 @@ var toolButtons []*ToolButton
 var paletteRects []image.Rectangle
 var widthRects []image.Rectangle
 var numberRects []image.Rectangle
+
+// keyboardAction maps a keyboard shortcut to the action name.
+var keyboardAction = map[KeyShortcut]string{}
 var textSizeRects []image.Rectangle
 var hoverTab = -1
 var hoverTool = -1
@@ -1096,105 +1117,141 @@ func main() {
 			}
 		}
 
+		keyboardAction = map[KeyShortcut]string{}
+
+		actions := map[string]func(){}
+
+		register := func(name string, keys KeyboardShortcuts, fn func()) {
+			actions[name] = fn
+			if keys != nil {
+				for _, sc := range keys.KeyboardShortcuts() {
+					keyboardAction[sc] = name
+				}
+			}
+		}
+
 		handleShortcut := func(action string) {
-			switch action {
-			case "capture":
-				img, err := captureScreenshot()
-				if err != nil {
-					log.Printf("capture screenshot: %v", err)
-					return
-				}
-				tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
-				current = len(tabs) - 1
-				tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
-				message = "captured screenshot"
-				log.Print(message)
-				messageUntil = time.Now().Add(2 * time.Second)
-			case "dup":
-				dup := image.NewRGBA(tabs[current].Image.Bounds())
-				draw.Draw(dup, dup.Bounds(), tabs[current].Image, image.Point{}, draw.Src)
-				tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx})
-				current = len(tabs) - 1
-			case "paste":
-				out, err := exec.Command("wl-paste", "--no-newline", "--type", "image/png").Output()
-				if err != nil {
-					log.Printf("paste: %v", err)
-					return
-				}
-				img, err := png.Decode(bytes.NewReader(out))
-				if err != nil {
-					log.Printf("paste decode: %v", err)
-					return
-				}
-				rgba := image.NewRGBA(img.Bounds())
-				draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-				tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
-				current = len(tabs) - 1
-				message = "pasted new tab"
-				log.Print(message)
-				messageUntil = time.Now().Add(2 * time.Second)
-			case "delete":
-				if len(tabs) > 1 {
-					tabs = append(tabs[:current], tabs[current+1:]...)
-					if current >= len(tabs) {
-						current = len(tabs) - 1
-					}
-				}
-			case "copy":
-				var buf bytes.Buffer
-				png.Encode(&buf, tabs[current].Image)
-				cmd := exec.Command("wl-copy", "--type", "image/png")
-				cmd.Stdin = &buf
-				if err := cmd.Run(); err != nil {
-					log.Printf("copy: %v", err)
-				} else {
-					message = "image copied to clipboard"
-					log.Print(message)
-					messageUntil = time.Now().Add(2 * time.Second)
-				}
-			case "save":
-				out, err := os.Create(*output)
-				if err != nil {
-					log.Printf("save: %v", err)
-					return
-				}
-				png.Encode(out, tabs[current].Image)
-				out.Close()
-				message = fmt.Sprintf("saved %s", *output)
-				log.Print(message)
-				messageUntil = time.Now().Add(2 * time.Second)
-			case "textdone":
-				d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
-				d.Dot = fixed.P(textPos.X, textPos.Y)
-				d.DrawString(textInput)
-				textInputActive = false
-			case "textcancel":
-				textInputActive = false
-			case "crop":
-				if tool == ToolCrop && !cropRect.Empty() {
-					cropped := cropImage(tabs[current].Image, cropRect)
-					tabs[current].Image = cropped
-					tabs[current].Offset = tabs[current].Offset.Add(cropRect.Min)
-					active = actionNone
-					cropRect = image.Rectangle{}
-				}
-			case "croptab":
-				if tool == ToolCrop && !cropRect.Empty() {
-					cropped := cropImage(tabs[current].Image, cropRect)
-					off := tabs[current].Offset.Add(cropRect.Min)
-					tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
-					current = len(tabs) - 1
-					active = actionNone
-					cropRect = image.Rectangle{}
-				}
-			case "cropcancel":
-				if tool == ToolCrop {
-					cropRect = image.Rectangle{}
-					active = actionNone
-				}
+			if fn, ok := actions[action]; ok {
+				fn()
 			}
 			w.Send(paint.Event{})
 		}
+
+		register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
+			img, err := captureScreenshot()
+			if err != nil {
+				log.Printf("capture screenshot: %v", err)
+				return
+			}
+			tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
+			current = len(tabs) - 1
+			tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
+			message = "captured screenshot"
+			log.Print(message)
+			messageUntil = time.Now().Add(2 * time.Second)
+		})
+
+		register("dup", shortcutList{{Rune: 'u', Modifiers: key.ModControl}}, func() {
+			dup := image.NewRGBA(tabs[current].Image.Bounds())
+			draw.Draw(dup, dup.Bounds(), tabs[current].Image, image.Point{}, draw.Src)
+			tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx})
+			current = len(tabs) - 1
+		})
+
+		register("paste", shortcutList{{Rune: 'v', Modifiers: key.ModControl}}, func() {
+			out, err := exec.Command("wl-paste", "--no-newline", "--type", "image/png").Output()
+			if err != nil {
+				log.Printf("paste: %v", err)
+				return
+			}
+			img, err := png.Decode(bytes.NewReader(out))
+			if err != nil {
+				log.Printf("paste decode: %v", err)
+				return
+			}
+			rgba := image.NewRGBA(img.Bounds())
+			draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
+			tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
+			current = len(tabs) - 1
+			message = "pasted new tab"
+			log.Print(message)
+			messageUntil = time.Now().Add(2 * time.Second)
+		})
+
+		register("delete", shortcutList{{Rune: 'd', Modifiers: key.ModControl}}, func() {
+			if len(tabs) > 1 {
+				tabs = append(tabs[:current], tabs[current+1:]...)
+				if current >= len(tabs) {
+					current = len(tabs) - 1
+				}
+			}
+		})
+
+		register("copy", shortcutList{{Rune: 'c', Modifiers: key.ModControl}}, func() {
+			var buf bytes.Buffer
+			png.Encode(&buf, tabs[current].Image)
+			cmd := exec.Command("wl-copy", "--type", "image/png")
+			cmd.Stdin = &buf
+			if err := cmd.Run(); err != nil {
+				log.Printf("copy: %v", err)
+			} else {
+				message = "image copied to clipboard"
+				log.Print(message)
+				messageUntil = time.Now().Add(2 * time.Second)
+			}
+		})
+
+		register("save", shortcutList{{Rune: 's', Modifiers: key.ModControl}}, func() {
+			out, err := os.Create(*output)
+			if err != nil {
+				log.Printf("save: %v", err)
+				return
+			}
+			png.Encode(out, tabs[current].Image)
+			out.Close()
+			message = fmt.Sprintf("saved %s", *output)
+			log.Print(message)
+			messageUntil = time.Now().Add(2 * time.Second)
+		})
+
+		register("textdone", shortcutList{{Code: key.CodeReturnEnter}}, func() {
+			d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+			d.Dot = fixed.P(textPos.X, textPos.Y)
+			d.DrawString(textInput)
+			textInputActive = false
+		})
+
+		register("textcancel", shortcutList{{Code: key.CodeEscape}}, func() {
+			textInputActive = false
+		})
+
+		register("crop", shortcutList{{Code: key.CodeReturnEnter}}, func() {
+			if tool == ToolCrop && !cropRect.Empty() {
+				cropped := cropImage(tabs[current].Image, cropRect)
+				tabs[current].Image = cropped
+				tabs[current].Offset = tabs[current].Offset.Add(cropRect.Min)
+				active = actionNone
+				cropRect = image.Rectangle{}
+			}
+		})
+
+		register("croptab", shortcutList{{Code: key.CodeReturnEnter, Modifiers: key.ModControl}}, func() {
+			if tool == ToolCrop && !cropRect.Empty() {
+				cropped := cropImage(tabs[current].Image, cropRect)
+				off := tabs[current].Offset.Add(cropRect.Min)
+				tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
+				current = len(tabs) - 1
+				active = actionNone
+				cropRect = image.Rectangle{}
+			}
+		})
+
+		register("cropcancel", shortcutList{{Code: key.CodeEscape}}, func() {
+			if tool == ToolCrop {
+				cropRect = image.Rectangle{}
+				active = actionNone
+			}
+		})
 
 		for {
 			e := w.NextEvent()
@@ -1694,37 +1751,23 @@ func main() {
 						continue
 					}
 					confirmDelete = false
+					ks := KeyShortcut{Rune: unicode.ToLower(e.Rune), Code: e.Code, Modifiers: e.Modifiers}
+					if action, ok := keyboardAction[ks]; ok {
+						if action == "delete" {
+							if !confirmDelete {
+								confirmDelete = true
+								message = "press D again to delete"
+								log.Print(message)
+								messageUntil = time.Now().Add(2 * time.Second)
+								w.Send(paint.Event{})
+								continue
+							}
+							confirmDelete = false
+						}
+						handleShortcut(action)
+						continue
+					}
 					switch e.Rune {
-					case 's', 'S':
-						if e.Modifiers&key.ModControl != 0 {
-							handleShortcut("save")
-						}
-					case 'd', 'D':
-						if e.Modifiers&key.ModControl == 0 {
-							break
-						}
-						if !confirmDelete {
-							confirmDelete = true
-							message = "press D again to delete"
-							log.Print(message)
-							messageUntil = time.Now().Add(2 * time.Second)
-							w.Send(paint.Event{})
-							continue
-						}
-						confirmDelete = false
-						handleShortcut("delete")
-					case 'c', 'C':
-						if e.Modifiers&key.ModControl != 0 {
-							handleShortcut("copy")
-						}
-					case 'v', 'V':
-						if e.Modifiers&key.ModControl != 0 {
-							handleShortcut("paste")
-						}
-					case 'u', 'U':
-						if e.Modifiers&key.ModControl != 0 {
-							handleShortcut("dup")
-						}
 					case 'm', 'M':
 						tool = ToolMove
 						active = actionNone
@@ -1776,10 +1819,6 @@ func main() {
 						}
 						paintMu.Unlock()
 						return
-					case 'n', 'N':
-						if e.Modifiers&key.ModControl != 0 {
-							handleShortcut("capture")
-						}
 					case '+', '=':
 						tabs[current].Zoom *= 1.25
 						if tabs[current].Zoom < 0.1 {
@@ -1794,27 +1833,6 @@ func main() {
 						w.Send(paint.Event{})
 					case -1:
 						switch e.Code {
-						case key.CodeReturnEnter:
-							if tool == ToolCrop && !cropRect.Empty() {
-								cropped := cropImage(tabs[current].Image, cropRect)
-								off := tabs[current].Offset.Add(cropRect.Min)
-								if e.Modifiers&key.ModControl != 0 {
-									tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
-									current = len(tabs) - 1
-								} else {
-									tabs[current].Image = cropped
-									tabs[current].Offset = off
-								}
-								active = actionNone
-								cropRect = image.Rectangle{}
-								w.Send(paint.Event{})
-							}
-						case key.CodeEscape:
-							if tool == ToolCrop {
-								cropRect = image.Rectangle{}
-								active = actionNone
-								w.Send(paint.Event{})
-							}
 						case key.CodeLeftArrow:
 							if tool == ToolMove {
 								tabs[current].Offset.X -= 10
