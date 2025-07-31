@@ -1,2 +1,37 @@
 # ShineyShot
 
+ShineyShot provides a simple command line interface for capturing and annotating screenshots.
+
+## Examples
+
+Capture and annotate a screenshot from the screen:
+
+```
+shineyshot annotate capture-screen
+```
+
+Annotate an existing image file:
+
+```
+shineyshot annotate open-file -file image.png -output annotated.png
+```
+
+Preview an image in a window:
+
+```
+shineyshot preview -file annotated.png
+```
+
+Capture a screenshot directly to a file:
+
+```
+shineyshot snapshot -output screenshot.png
+```
+
+Draw a line on an existing image:
+
+```
+shineyshot draw -file input.png -output output.png 0 0 100 100
+```
+
+The `snapshot` command will gain options for capturing windows and regions in future versions.

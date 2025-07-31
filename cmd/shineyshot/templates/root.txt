@@ -1,0 +1,9 @@
+Usage: {{.Program}} <command> [options]
+
+Commands:
+  annotate
+  preview
+  snapshot
+  draw
+  interactive
+  version
