@@ -571,13 +571,14 @@ func (a *AppState) Main(s screen.Screen) {
 							my -= shift.Y
 							drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
 						case ToolCircle:
-							r := int(math.Hypot(float64(mx-last.X), float64(my-last.Y)))
-							br := image.Rect(last.X-r-widths[tabs[current].WidthIdx], last.Y-r-widths[tabs[current].WidthIdx], last.X+r+widths[tabs[current].WidthIdx]+1, last.Y+r+widths[tabs[current].WidthIdx]+1)
+							rx := int(math.Abs(float64(mx - last.X)))
+							ry := int(math.Abs(float64(my - last.Y)))
+							br := image.Rect(last.X-rx-widths[tabs[current].WidthIdx], last.Y-ry-widths[tabs[current].WidthIdx], last.X+rx+widths[tabs[current].WidthIdx]+1, last.Y+ry+widths[tabs[current].WidthIdx]+1)
 							shift := ensureCanvasContains(&tabs[current], br)
 							last = last.Sub(shift)
 							mx -= shift.X
 							my -= shift.Y
-							drawCircle(tabs[current].Image, last.X, last.Y, r, col, widths[tabs[current].WidthIdx])
+							drawEllipse(tabs[current].Image, last.X, last.Y, rx, ry, col, widths[tabs[current].WidthIdx])
 						case ToolLine:
 							minX, minY := last.X, last.Y
 							maxX, maxY := mx, my
