@@ -1,0 +1,3 @@
+Usage: {{.Program}} draw [flags] x0 y0 x1 y1
+Draw a line between the given coordinates on the image file.
+{{template "flags" .FlagSet}}

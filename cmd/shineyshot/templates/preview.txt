@@ -1,0 +1,3 @@
+Usage: {{.Program}} preview [flags]
+Display an image in a window. No subcommands are available.
+{{template "flags" .FlagSet}}

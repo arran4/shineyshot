@@ -1,0 +1,2 @@
+Usage: {{.Program}} snapshot [flags]
+{{template "flags" .FlagSet}}
