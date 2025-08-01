@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/example/shineyshot/internal/capture"
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 	"image"
 	"image/draw"
@@ -57,6 +58,22 @@ func (a *AppState) Run() { driver.Main(a.Main) }
 func (a *AppState) Main(s screen.Screen) {
 	rgba := a.Image
 	output := a.Output
+
+	// Ensure the toolbar is wide enough to fit the program title and all
+	// tool button labels so the UI contents are not clipped on start up.
+	d := &font.Drawer{Face: basicfont.Face7x13}
+	max := d.MeasureString("ShineyShot").Ceil() + 8 // padding
+	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "H:Num", "T:Text"}
+	for _, lbl := range toolLabels {
+		w := d.MeasureString(lbl).Ceil() + 8
+		if w > max {
+			max = w
+		}
+	}
+	if max > toolbarWidth {
+		toolbarWidth = max
+	}
+
 	width := rgba.Bounds().Dx() + toolbarWidth
 	height := rgba.Bounds().Dy() + tabHeight + bottomHeight
 	w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height})
