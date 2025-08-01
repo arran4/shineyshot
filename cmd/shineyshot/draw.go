@@ -11,6 +11,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/example/shineyshot/internal/appstate"
 )
 
 // drawCmd draws a simple line on an image expanding the canvas if needed.
@@ -77,82 +79,6 @@ func parseDrawCmd(args []string, r *root) (*drawCmd, error) {
 	return &drawCmd{file: *file, output: *output, color: col, width: *width, coords: coords, root: r}, nil
 }
 
-func expandCanvas(img *image.RGBA, rect image.Rectangle) (*image.RGBA, image.Point) {
-	b := img.Bounds()
-	minX := b.Min.X
-	if rect.Min.X < minX {
-		minX = rect.Min.X
-	}
-	minY := b.Min.Y
-	if rect.Min.Y < minY {
-		minY = rect.Min.Y
-	}
-	maxX := b.Max.X
-	if rect.Max.X > maxX {
-		maxX = rect.Max.X
-	}
-	maxY := b.Max.Y
-	if rect.Max.Y > maxY {
-		maxY = rect.Max.Y
-	}
-	if minX == b.Min.X && minY == b.Min.Y && maxX == b.Max.X && maxY == b.Max.Y {
-		return img, image.Point{}
-	}
-	newImg := image.NewRGBA(image.Rect(0, 0, maxX-minX, maxY-minY))
-	draw.Draw(newImg, newImg.Bounds(), image.Transparent, image.Point{}, draw.Src)
-	draw.Draw(newImg, b.Add(image.Pt(-minX, -minY)), img, image.Point{}, draw.Src)
-	return newImg, image.Pt(minX, minY)
-}
-
-func setThickPixel(img *image.RGBA, x, y, thick int, col color.Color) {
-	r := thick / 2
-	for dx := -r; dx <= r; dx++ {
-		for dy := -r; dy <= r; dy++ {
-			px := x + dx
-			py := y + dy
-			if image.Pt(px, py).In(img.Bounds()) {
-				img.Set(px, py, col)
-			}
-		}
-	}
-}
-
-func drawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
-	dx := abs(x1 - x0)
-	dy := abs(y1 - y0)
-	sx := -1
-	if x0 < x1 {
-		sx = 1
-	}
-	sy := -1
-	if y0 < y1 {
-		sy = 1
-	}
-	err := dx - dy
-	for {
-		setThickPixel(img, x0, y0, thick, col)
-		if x0 == x1 && y0 == y1 {
-			break
-		}
-		e2 := 2 * err
-		if e2 > -dy {
-			err -= dy
-			x0 += sx
-		}
-		if e2 < dx {
-			err += dx
-			y0 += sy
-		}
-	}
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
 func (c *drawCmd) Run() error {
 	f, err := os.Open(c.file)
 	if err != nil {
@@ -173,12 +99,12 @@ func (c *drawCmd) Run() error {
 		rect.Min.Y, rect.Max.Y = rect.Max.Y, rect.Min.Y
 	}
 	var shift image.Point
-	rgba, shift = expandCanvas(rgba, rect)
+	rgba, shift = appstate.ExpandCanvas(rgba, rect)
 	c.coords[0] -= shift.X
 	c.coords[2] -= shift.X
 	c.coords[1] -= shift.Y
 	c.coords[3] -= shift.Y
-	drawLine(rgba, c.coords[0], c.coords[1], c.coords[2], c.coords[3], c.color, c.width)
+	appstate.DrawLine(rgba, c.coords[0], c.coords[1], c.coords[2], c.coords[3], c.color, c.width)
 	out, err := os.Create(c.output)
 	if err != nil {
 		return err

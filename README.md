@@ -34,4 +34,7 @@ Draw a line on an existing image:
 shineyshot draw -file input.png -output output.png 0 0 100 100
 ```
 
+The draw command currently only supports straight lines. Support for arrows and
+other shapes may be added in the future.
+
 The `snapshot` command will gain options for capturing windows and regions in future versions.
