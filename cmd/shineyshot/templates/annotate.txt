@@ -1,0 +1,3 @@
+Usage: {{.Program}} annotate <capture-screen|capture-window|capture-region|open-file> [flags]
+Launch the annotation UI using the chosen input method.
+{{template "flags" .Flags}}
