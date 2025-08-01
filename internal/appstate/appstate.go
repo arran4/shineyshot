@@ -658,6 +658,25 @@ func drawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
 	}
 }
 
+func drawEllipse(img *image.RGBA, cx, cy, rx, ry int, col color.Color, thick int) {
+	steps := int(math.Ceil(2 * math.Pi * math.Sqrt(float64(rx*rx+ry*ry))))
+	if steps < 8 {
+		steps = 8
+	}
+	var prevX, prevY int
+	for i := 0; i <= steps; i++ {
+		angle := 2 * math.Pi * float64(i) / float64(steps)
+		x := cx + int(math.Cos(angle)*float64(rx))
+		y := cy + int(math.Sin(angle)*float64(ry))
+		if i > 0 {
+			drawLine(img, prevX, prevY, x, y, col, thick)
+		} else {
+			setThickPixel(img, x, y, thick, col)
+		}
+		prevX, prevY = x, y
+	}
+}
+
 func drawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
 	drawLine(img, x0, y0, x1, y1, col, thick)
 	angle := math.Atan2(float64(y1-y0), float64(x1-x0))
@@ -681,6 +700,19 @@ func drawFilledCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
 				if image.Pt(px, py).In(img.Bounds()) {
 					img.Set(px, py, col)
 				}
+			}
+		}
+	}
+}
+
+func drawFilledEllipse(img *image.RGBA, cx, cy, rx, ry int, col color.Color) {
+	for dy := -ry; dy <= ry; dy++ {
+		span := int(float64(rx) * math.Sqrt(1.0-float64(dy*dy)/float64(ry*ry)))
+		for dx := -span; dx <= span; dx++ {
+			px := cx + dx
+			py := cy + dy
+			if image.Pt(px, py).In(img.Bounds()) {
+				img.Set(px, py, col)
 			}
 		}
 	}
