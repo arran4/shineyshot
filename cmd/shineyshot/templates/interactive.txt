@@ -1,2 +1,10 @@
 Usage: {{.Program}} interactive
-(not implemented)
+Starts an interactive shell. Available commands:
+  screenshot                capture a full screen screenshot
+  arrow x0 y0 x1 y1         draw an arrow on the image
+  crop x0 y0 x1 y1          crop the current image
+  show                      preview the image in a window
+  save FILE                 save the image to FILE
+  copy                      copy the image to the clipboard
+  copyname                  copy the last saved filename
+  quit                      exit interactive mode
