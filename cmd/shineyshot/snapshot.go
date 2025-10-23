@@ -12,17 +12,24 @@ import (
 type snapshotCmd struct {
 	output string
 	stdout bool
-	root   *root
+	*root
+	fs *flag.FlagSet
+}
+
+func (s *snapshotCmd) FlagSet() *flag.FlagSet {
+	return s.fs
 }
 
 func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	fs := flag.NewFlagSet("snapshot", flag.ExitOnError)
-	output := fs.String("output", "screenshot.png", "output file path")
-	stdout := fs.Bool("stdout", false, "write PNG to stdout")
+	s := &snapshotCmd{root: r, fs: fs}
+	fs.Usage = usageFunc(s)
+	fs.StringVar(&s.output, "output", "screenshot.png", "output file path")
+	fs.BoolVar(&s.stdout, "stdout", false, "write PNG to stdout")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	return &snapshotCmd{output: *output, stdout: *stdout, root: r}, nil
+	return s, nil
 }
 
 func (s *snapshotCmd) Run() error {

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"embed"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"sync"
 	"text/template"
 )
@@ -72,6 +74,17 @@ func (e *UsageError) renderHelp() (string, error) {
 
 func (r *root) Template() string {
 	return "root.txt"
+}
+
+func usageFunc(h HelpData) func() {
+	return func() {
+		help, err := (&UsageError{of: h}).renderHelp()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+		fmt.Fprintln(os.Stderr, help)
+	}
 }
 
 func (a *annotateCmd) Template() string {
