@@ -33,6 +33,7 @@ func (r *root) FlagSet() *flag.FlagSet {
 
 func newRoot() *root {
 	r := &root{fs: flag.NewFlagSet("shineyshot", flag.ExitOnError), program: "shineyshot"}
+	r.fs.Usage = usageFunc(r)
 	return r
 }
 

@@ -59,19 +59,21 @@ func parseColor(s string) (color.Color, error) {
 
 func parseDrawCmd(args []string, r *root) (*drawCmd, error) {
 	fs := flag.NewFlagSet("draw", flag.ExitOnError)
-	file := fs.String("file", "", "input image file")
-	output := fs.String("output", "output.png", "output file path")
-	colorFlag := fs.String("color", "red", "drawing color")
-	width := fs.Int("width", 2, "line width")
+	d := &drawCmd{root: r, fs: fs}
+	fs.Usage = usageFunc(d)
+	fs.StringVar(&d.file, "file", "", "input image file")
+	fs.StringVar(&d.output, "output", "output.png", "output file path")
+	var colorFlag string
+	fs.StringVar(&colorFlag, "color", "red", "drawing color")
+	fs.IntVar(&d.width, "width", 2, "line width")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	d := &drawCmd{file: *file, output: *output, width: *width, root: r, fs: fs}
-	if *file == "" || fs.NArg() < 4 {
+	if d.file == "" || fs.NArg() < 4 {
 		return nil, &UsageError{of: d}
 	}
 	var err error
-	d.color, err = parseColor(*colorFlag)
+	d.color, err = parseColor(colorFlag)
 	if err != nil {
 		return nil, err
 	}

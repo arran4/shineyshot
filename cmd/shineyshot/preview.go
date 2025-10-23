@@ -22,12 +22,13 @@ func (p *previewCmd) FlagSet() *flag.FlagSet {
 
 func parsePreviewCmd(args []string, r *root) (*previewCmd, error) {
 	fs := flag.NewFlagSet("preview", flag.ExitOnError)
-	file := fs.String("file", "", "image file to open")
+	c := &previewCmd{root: r, fs: fs}
+	fs.Usage = usageFunc(c)
+	fs.StringVar(&c.file, "file", "", "image file to open")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	c := &previewCmd{file: *file, root: r, fs: fs}
-	if *file == "" {
+	if c.file == "" {
 		return nil, &UsageError{of: c}
 	}
 	return c, nil

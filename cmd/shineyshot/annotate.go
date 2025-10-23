@@ -26,9 +26,10 @@ func (a *annotateCmd) FlagSet() *flag.FlagSet {
 
 func parseAnnotateCmd(args []string, r *root) (*annotateCmd, error) {
 	fs := flag.NewFlagSet("annotate", flag.ExitOnError)
-	file := fs.String("file", "", "image file to annotate")
-	output := fs.String("output", "annotated.png", "output file path")
-	a := &annotateCmd{file: *file, output: *output, root: r, fs: fs}
+	a := &annotateCmd{root: r, fs: fs}
+	fs.Usage = usageFunc(a)
+	fs.StringVar(&a.file, "file", "", "image file to annotate")
+	fs.StringVar(&a.output, "output", "annotated.png", "output file path")
 	if len(args) < 1 {
 		return nil, &UsageError{of: a}
 	}
