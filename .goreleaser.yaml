@@ -2,7 +2,7 @@ project_name: shineyshot
 before:
   hooks:
     - go mod tidy
-    - CGO_ENABLED=0 go test ./...
+    - env CGO_ENABLED=0 go test ./...
 
 builds:
   - id: shineyshot
