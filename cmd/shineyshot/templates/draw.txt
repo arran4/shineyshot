@@ -1,3 +1,20 @@
-Usage: {{.Program}} draw [flags] x0 y0 x1 y1
-Draw a line between the given coordinates on the image file.
+Usage: {{.Program}} draw [flags] <shape> <arguments>
+
+You can place flags before or after the shape. For example:
+  {{.Program}} draw -file input.png arrow -color green 10 10 200 160
+
+Shapes:
+  line x0 y0 x1 y1
+  arrow x0 y0 x1 y1
+  rect x0 y0 x1 y1
+  circle cx cy radius
+  number x y value
+  text x y "message"
+  mask x0 y0 x1 y1
+Options apply where relevant:
+  -color name|#rrggbb[aa]
+  -width pixels (for line, arrow, rect, circle)
+  -text-size points (for text)
+  -number-size radius (for number)
+  -mask-opacity 0-255 (for mask)
 {{template "flags" .FlagSet}}

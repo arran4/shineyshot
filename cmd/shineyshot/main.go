@@ -58,6 +58,8 @@ func (r *root) Run(args []string) error {
 		cmd, err = parseSnapshotCmd(subArgs, r)
 	case "draw":
 		cmd, err = parseDrawCmd(subArgs, r)
+	case "file":
+		cmd, err = parseFileCmd(subArgs, r)
 	case "interactive":
 		cmd, err = parseInteractiveCmd(subArgs, r)
 	case "background":

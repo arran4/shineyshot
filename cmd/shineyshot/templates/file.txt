@@ -1,0 +1,12 @@
+Usage: {{.Program}} file -file PATH <operation> [arguments]
+
+Operations:
+  snapshot [flags]        capture into the file using screen, window, or region modes
+  draw <shape> [...]      add markup such as lines, arrows, numbers, text, or masks
+  annotate [flags]        open the file in the annotation UI for manual edits
+  preview                 view the file in a simple Linux viewer window
+
+The nested command inherits the provided path. Supply `-output` or `-file` again
+inside the subcommand to write to a different destination.
+
+{{template "flags" .FlagSet}}

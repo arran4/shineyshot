@@ -1,10 +1,8 @@
 Usage: {{.Program}} <command> [options]
 
 Commands:
-  annotate
-  preview
-  snapshot
-  draw
-  interactive
-  background
-  version
+  file          run snapshot, draw, annotate, and preview workflows against a file
+  annotate      launch the capture/annotate UI directly
+  interactive   start the interactive portal
+  background    capture in the background
+  version       display version information
