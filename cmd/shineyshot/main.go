@@ -59,7 +59,7 @@ func (r *root) Run(args []string) error {
 	case "draw":
 		cmd, err = parseDrawCmd(subArgs, r)
 	case "interactive":
-		cmd = &interactiveCmd{r: r}
+		cmd = newInteractiveCmd(r)
 	case "version":
 		cmd = &versionCmd{r: r}
 	default:

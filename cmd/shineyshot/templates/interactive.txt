@@ -1,2 +1,34 @@
 Usage: {{.Program}} interactive
-(not implemented)
+Starts an interactive shell. Available commands:
+  capture screen [DISPLAY]   capture a full screen screenshot ('screens' shows displays)
+  capture window SELECTOR    capture a window by selector ('windows' shows selectors)
+  capture region SCREEN X Y WIDTH HEIGHT   capture a region relative to a screen ('screens' shows displays)
+  arrow x0 y0 x1 y1          draw an arrow with the current stroke
+  line x0 y0 x1 y1           draw a line with the current stroke
+  rect x0 y0 x1 y1           draw a rectangle with the current stroke
+  circle x y r               draw a circle with the current stroke
+  crop x0 y0 x1 y1           crop the current image
+  color [value|list]         change or list palette colors
+  colors                     list palette colors
+  width [value|list]         change or list stroke widths
+  widths                     list stroke widths
+  show                       open a synced annotation window
+  preview                    open a detached copy in a window
+  save FILE                  save the image to FILE
+  savetmp                    save to /tmp with a unique filename
+  savepictures               save to your Pictures directory
+  savehome                   save to your home directory
+  copy                       copy the image to the clipboard
+  windows                    list available windows and selector hints
+  screens                    list available screens/displays
+  copyname                   copy the last saved filename
+  quit                       exit interactive mode
+
+Window selectors:
+  index:<n>        window list index (see 'windows')
+  id:<hex|dec>     X11 window id
+  pid:<pid>        process id that owns the window
+  exec:<name>      executable name substring
+  class:<name>     X11 WM_CLASS substring
+  title:<text>     window title substring (use for literal words like 'list')
+  <text>           fallback substring match on title/executable/class

@@ -14,6 +14,8 @@ import (
 	"image/draw"
 	"log"
 	"math"
+	"sort"
+	"sync"
 	"time"
 
 	"golang.org/x/exp/shiny/screen"
@@ -43,6 +45,11 @@ const (
 	ToolRect
 	ToolNumber
 	ToolText
+)
+
+const (
+	defaultColorIndex = 2
+	defaultWidthIndex = 2
 )
 
 type Tab struct {
@@ -81,24 +88,50 @@ const (
 	actionDraw
 )
 
-var palette = []color.RGBA{
-	{0, 0, 0, 255},       // black
-	{255, 255, 255, 255}, // white
-	{255, 0, 0, 255},
-	{0, 255, 0, 255},
-	{0, 0, 255, 255},
-	{255, 255, 0, 255},
-	{0, 255, 255, 255},
-	{255, 0, 255, 255},
-	{128, 0, 0, 255},
-	{0, 128, 0, 255},
-	{0, 0, 128, 255},
-	{128, 128, 0, 255},
-	{0, 128, 128, 255},
-	{128, 0, 128, 255},
-	{192, 192, 192, 255},
-	{128, 128, 128, 255},
+type PaletteColor struct {
+	Name  string
+	Color color.RGBA
 }
+
+var (
+	paletteMu sync.RWMutex
+	palette   = []color.RGBA{
+		{0, 0, 0, 255},       // black
+		{255, 255, 255, 255}, // white
+		{255, 0, 0, 255},
+		{0, 255, 0, 255},
+		{0, 0, 255, 255},
+		{255, 255, 0, 255},
+		{0, 255, 255, 255},
+		{255, 0, 255, 255},
+		{128, 0, 0, 255},
+		{0, 128, 0, 255},
+		{0, 0, 128, 255},
+		{128, 128, 0, 255},
+		{0, 128, 128, 255},
+		{128, 0, 128, 255},
+		{192, 192, 192, 255},
+		{128, 128, 128, 255},
+	}
+	paletteNames = []string{
+		"Black",
+		"White",
+		"Red",
+		"Lime",
+		"Blue",
+		"Yellow",
+		"Cyan",
+		"Magenta",
+		"Maroon",
+		"Green",
+		"Navy",
+		"Olive",
+		"Teal",
+		"Purple",
+		"Silver",
+		"Gray",
+	}
+)
 
 var checkerLight = color.RGBA{220, 220, 220, 255}
 var checkerDark = color.RGBA{192, 192, 192, 255}
@@ -172,8 +205,175 @@ func drawBackdrop(dst *image.RGBA) {
 	draw.Draw(dst, b, backdropCache, image.Point{}, draw.Src)
 }
 
-var widths = []int{1, 2, 4, 6, 8}
+var (
+	widthsMu sync.RWMutex
+	widths   = []int{1, 2, 4, 6, 8}
+)
 var numberSizes = []int{8, 12, 16, 20, 24}
+
+// DefaultColorIndex returns the default palette index used for drawing tools.
+func DefaultColorIndex() int { return defaultColorIndex }
+
+// DefaultWidthIndex returns the default stroke width index used for drawing tools.
+func DefaultWidthIndex() int { return defaultWidthIndex }
+
+// Palette returns a copy of the available drawing colors.
+func Palette() []color.RGBA {
+	paletteMu.RLock()
+	defer paletteMu.RUnlock()
+	out := make([]color.RGBA, len(palette))
+	copy(out, palette)
+	return out
+}
+
+// PaletteColors returns palette entries annotated with their display names.
+func PaletteColors() []PaletteColor {
+	paletteMu.RLock()
+	defer paletteMu.RUnlock()
+	out := make([]PaletteColor, len(palette))
+	for i := range palette {
+		out[i] = PaletteColor{Name: paletteNames[i], Color: palette[i]}
+	}
+	return out
+}
+
+// EnsurePaletteColor makes sure col is present in the palette and returns its index.
+func EnsurePaletteColor(col color.RGBA, name string) int {
+	paletteMu.Lock()
+	defer paletteMu.Unlock()
+	for idx, existing := range palette {
+		if existing == col {
+			if name != "" && paletteNames[idx] == "" {
+				paletteNames[idx] = name
+			}
+			return idx
+		}
+	}
+	if name == "" {
+		name = fmt.Sprintf("#%02X%02X%02X", col.R, col.G, col.B)
+	}
+	palette = append(palette, col)
+	paletteNames = append(paletteNames, name)
+	return len(palette) - 1
+}
+
+// WidthOptions returns a copy of the available stroke widths.
+func WidthOptions() []int {
+	widthsMu.RLock()
+	defer widthsMu.RUnlock()
+	out := make([]int, len(widths))
+	copy(out, widths)
+	return out
+}
+
+// EnsureWidth makes sure width is included in the options and returns its index.
+func EnsureWidth(width int) int {
+	if width < 1 {
+		width = 1
+	}
+	widthsMu.Lock()
+	defer widthsMu.Unlock()
+	for idx, existing := range widths {
+		if existing == width {
+			return idx
+		}
+	}
+	widths = append(widths, width)
+	sort.Ints(widths)
+	for idx, existing := range widths {
+		if existing == width {
+			return idx
+		}
+	}
+	return 0
+}
+
+func paletteLen() int {
+	paletteMu.RLock()
+	defer paletteMu.RUnlock()
+	return len(palette)
+}
+
+func paletteColorAt(idx int) color.RGBA {
+	paletteMu.RLock()
+	defer paletteMu.RUnlock()
+	if len(palette) == 0 {
+		return color.RGBA{}
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(palette) {
+		idx = len(palette) - 1
+	}
+	return palette[idx]
+}
+
+func paletteNameAt(idx int) string {
+	paletteMu.RLock()
+	defer paletteMu.RUnlock()
+	if len(paletteNames) == 0 {
+		return ""
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(paletteNames) {
+		idx = len(paletteNames) - 1
+	}
+	return paletteNames[idx]
+}
+
+func clampColorIndex(idx int) int {
+	paletteMu.RLock()
+	defer paletteMu.RUnlock()
+	if len(palette) == 0 {
+		return 0
+	}
+	if idx < 0 {
+		return 0
+	}
+	if idx >= len(palette) {
+		return len(palette) - 1
+	}
+	return idx
+}
+
+func widthsLen() int {
+	widthsMu.RLock()
+	defer widthsMu.RUnlock()
+	return len(widths)
+}
+
+func widthAt(idx int) int {
+	widthsMu.RLock()
+	defer widthsMu.RUnlock()
+	if len(widths) == 0 {
+		return 0
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(widths) {
+		idx = len(widths) - 1
+	}
+	return widths[idx]
+}
+
+func clampWidthIndex(idx int) int {
+	widthsMu.RLock()
+	defer widthsMu.RUnlock()
+	if len(widths) == 0 {
+		return 0
+	}
+	if idx < 0 {
+		return 0
+	}
+	if idx >= len(widths) {
+		return len(widths) - 1
+	}
+	return idx
+}
 
 // KeyShortcut describes a keyboard combination that triggers an action.
 type KeyShortcut struct {
