@@ -10,9 +10,11 @@ import (
 	"image/png"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/example/shineyshot/internal/appstate"
 	"github.com/example/shineyshot/internal/capture"
@@ -29,19 +31,32 @@ type interactiveCmd struct {
 	colorIdx int
 	widthIdx int
 
-	palette []color.RGBA
+	palette []appstate.PaletteColor
 	widths  []int
+
+	defaultPaletteSet map[color.RGBA]struct{}
+	defaultWidthSet   map[int]struct{}
 }
 
 func newInteractiveCmd(r *root) *interactiveCmd {
-	palette := appstate.Palette()
+	palette := appstate.PaletteColors()
 	widths := appstate.WidthOptions()
+	paletteSet := make(map[color.RGBA]struct{}, len(palette))
+	for _, entry := range palette {
+		paletteSet[entry.Color] = struct{}{}
+	}
+	widthSet := make(map[int]struct{}, len(widths))
+	for _, w := range widths {
+		widthSet[w] = struct{}{}
+	}
 	return &interactiveCmd{
-		r:        r,
-		colorIdx: clampIndex(appstate.DefaultColorIndex(), len(palette)),
-		widthIdx: clampIndex(appstate.DefaultWidthIndex(), len(widths)),
-		palette:  palette,
-		widths:   widths,
+		r:                 r,
+		colorIdx:          clampIndex(appstate.DefaultColorIndex(), len(palette)),
+		widthIdx:          clampIndex(appstate.DefaultWidthIndex(), len(widths)),
+		palette:           palette,
+		widths:            widths,
+		defaultPaletteSet: paletteSet,
+		defaultWidthSet:   widthSet,
 	}
 }
 
@@ -80,14 +95,24 @@ func (i *interactiveCmd) Run() error {
 			i.handleCrop(args)
 		case "color":
 			i.handleColor(args)
+		case "colors":
+			i.handleColorList()
 		case "width":
 			i.handleWidth(args)
+		case "widths":
+			i.handleWidthList()
 		case "show":
 			i.handleShow(false)
 		case "preview":
 			i.handleShow(true)
 		case "save":
 			i.handleSave(args)
+		case "savetmp":
+			i.handleSaveTmp()
+		case "savepictures":
+			i.handleSavePictures()
+		case "savehome":
+			i.handleSaveHome()
 		case "copy":
 			i.handleCopy()
 		case "copyname":
@@ -101,19 +126,24 @@ func (i *interactiveCmd) Run() error {
 
 func (i *interactiveCmd) printHelp() {
 	fmt.Fprintln(os.Stdout, "Commands:")
-	fmt.Fprintln(os.Stdout, "  capture screen DISPLAY     capture full screen on DISPLAY")
-	fmt.Fprintln(os.Stdout, "  capture window WINDOW      capture WINDOW by identifier")
-	fmt.Fprintln(os.Stdout, "  capture region             capture screen region")
+	fmt.Fprintln(os.Stdout, "  capture screen [DISPLAY]   capture full screen (defaults to current display)")
+	fmt.Fprintln(os.Stdout, "  capture window WINDOW      capture WINDOW by identifier (not implemented)")
+	fmt.Fprintln(os.Stdout, "  capture region             capture screen region (not implemented)")
 	fmt.Fprintln(os.Stdout, "  arrow x0 y0 x1 y1          draw arrow with current stroke")
 	fmt.Fprintln(os.Stdout, "  line x0 y0 x1 y1           draw line with current stroke")
 	fmt.Fprintln(os.Stdout, "  rect x0 y0 x1 y1           draw rectangle with current stroke")
 	fmt.Fprintln(os.Stdout, "  circle x y r               draw circle with current stroke")
 	fmt.Fprintln(os.Stdout, "  crop x0 y0 x1 y1           crop image to rectangle")
-	fmt.Fprintln(os.Stdout, "  color [index|list]         set or list palette colors")
+	fmt.Fprintln(os.Stdout, "  color [value|list]         set or list palette colors")
+	fmt.Fprintln(os.Stdout, "  colors                     list palette colors")
 	fmt.Fprintln(os.Stdout, "  width [value|list]         set or list stroke widths")
+	fmt.Fprintln(os.Stdout, "  widths                     list stroke widths")
 	fmt.Fprintln(os.Stdout, "  show                       open synced annotation window")
 	fmt.Fprintln(os.Stdout, "  preview                    open copy in separate window")
 	fmt.Fprintln(os.Stdout, "  save FILE                  save image to FILE")
+	fmt.Fprintln(os.Stdout, "  savetmp                    save to /tmp with a unique filename")
+	fmt.Fprintln(os.Stdout, "  savepictures               save to your Pictures directory")
+	fmt.Fprintln(os.Stdout, "  savehome                   save to your home directory")
 	fmt.Fprintln(os.Stdout, "  copy                       copy image to clipboard")
 	fmt.Fprintln(os.Stdout, "  copyname                   copy last saved filename")
 	fmt.Fprintln(os.Stdout, "  quit                       exit interactive mode")
@@ -132,12 +162,16 @@ func (i *interactiveCmd) handleCapture(args []string) {
 	)
 	switch mode {
 	case "screen":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: capture screen DISPLAY")
-			return
+		display := ""
+		if len(args) >= 2 {
+			display = args[1]
 		}
-		target = args[1]
-		img, err = capture.CaptureScreenshot(target)
+		img, err = capture.CaptureScreenshot(display)
+		if err != nil && display == "" {
+			display = "0"
+			img, err = capture.CaptureScreenshot(display)
+		}
+		target = display
 	case "window":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "usage: capture window WINDOW")
@@ -158,6 +192,8 @@ func (i *interactiveCmd) handleCapture(args []string) {
 	i.setImage(img)
 	if target != "" {
 		fmt.Fprintf(os.Stdout, "captured %s %s\n", mode, target)
+	} else if mode == "screen" {
+		fmt.Fprintln(os.Stdout, "captured screen (current display)")
 	} else {
 		fmt.Fprintf(os.Stdout, "captured %s\n", mode)
 	}
@@ -249,52 +285,45 @@ func (i *interactiveCmd) handleCrop(args []string) {
 }
 
 func (i *interactiveCmd) handleColor(args []string) {
-	if len(args) == 0 {
-		i.mu.RLock()
-		idx := i.colorIdx
-		i.mu.RUnlock()
-		fmt.Fprintf(os.Stdout, "current color: %d %s\n", idx, formatColor(i.palette, idx))
+	i.refreshPalette()
+	if len(args) == 0 || strings.EqualFold(args[0], "list") {
+		i.printColorList()
 		return
 	}
-	if strings.ToLower(args[0]) == "list" {
-		for idx, col := range i.palette {
-			fmt.Fprintf(os.Stdout, "  %2d: #%02X%02X%02X\n", idx, col.R, col.G, col.B)
+	arg := args[0]
+	if idx, err := strconv.Atoi(arg); err == nil {
+		if idx < 0 || idx >= len(i.palette) {
+			fmt.Fprintf(os.Stderr, "color index must be between 0 and %d\n", len(i.palette)-1)
+			return
 		}
+		i.applyColorIndex(idx)
 		return
 	}
-	idx, err := strconv.Atoi(args[0])
+	for idx, entry := range i.palette {
+		if entry.Name != "" && strings.EqualFold(entry.Name, arg) {
+			i.applyColorIndex(idx)
+			return
+		}
+	}
+	col, err := parseHexColor(arg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid color index %q\n", args[0])
+		fmt.Fprintf(os.Stderr, "invalid color %q\n", arg)
 		return
 	}
-	if idx < 0 || idx >= len(i.palette) {
-		fmt.Fprintf(os.Stderr, "color index must be between 0 and %d\n", len(i.palette)-1)
-		return
-	}
-	i.mu.Lock()
-	i.colorIdx = idx
-	widthIdx := i.widthIdx
-	state := i.state
-	i.mu.Unlock()
-	if state != nil {
-		state.ApplySettings(idx, widthIdx)
-	}
-	fmt.Fprintf(os.Stdout, "color set to %d %s\n", idx, formatColor(i.palette, idx))
+	idx := appstate.EnsurePaletteColor(col, "")
+	i.refreshPalette()
+	i.applyColorIndex(idx)
+}
+
+func (i *interactiveCmd) handleColorList() {
+	i.refreshPalette()
+	i.printColorList()
 }
 
 func (i *interactiveCmd) handleWidth(args []string) {
-	if len(args) == 0 {
-		i.mu.RLock()
-		idx := i.widthIdx
-		width := widthAt(i.widths, idx)
-		i.mu.RUnlock()
-		fmt.Fprintf(os.Stdout, "current width: %dpx\n", width)
-		return
-	}
-	if strings.ToLower(args[0]) == "list" {
-		for _, w := range i.widths {
-			fmt.Fprintf(os.Stdout, "  %dpx\n", w)
-		}
+	i.refreshWidths()
+	if len(args) == 0 || strings.EqualFold(args[0], "list") {
+		i.printWidthList()
 		return
 	}
 	val, err := strconv.Atoi(args[0])
@@ -302,20 +331,108 @@ func (i *interactiveCmd) handleWidth(args []string) {
 		fmt.Fprintf(os.Stderr, "invalid width %q\n", args[0])
 		return
 	}
-	idx := findWidthIndex(i.widths, val)
-	if idx == -1 {
-		fmt.Fprintf(os.Stderr, "unsupported width %d\n", val)
+	idx := appstate.EnsureWidth(val)
+	i.refreshWidths()
+	i.applyWidthIndex(idx)
+}
+
+func (i *interactiveCmd) handleWidthList() {
+	i.refreshWidths()
+	i.printWidthList()
+}
+
+func (i *interactiveCmd) refreshPalette() {
+	palette := appstate.PaletteColors()
+	i.mu.Lock()
+	i.palette = palette
+	i.colorIdx = clampIndex(i.colorIdx, len(i.palette))
+	i.mu.Unlock()
+}
+
+func (i *interactiveCmd) refreshWidths() {
+	widths := appstate.WidthOptions()
+	i.mu.Lock()
+	i.widths = widths
+	i.widthIdx = clampIndex(i.widthIdx, len(i.widths))
+	i.mu.Unlock()
+}
+
+func (i *interactiveCmd) printColorList() {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	if len(i.palette) == 0 {
+		fmt.Fprintln(os.Stdout, "no colors available")
 		return
 	}
+	current := clampIndex(i.colorIdx, len(i.palette))
+	for idx, entry := range i.palette {
+		marker := " "
+		if idx == current {
+			marker = "*"
+		}
+		name := entry.Name
+		hex := fmt.Sprintf("#%02X%02X%02X", entry.Color.R, entry.Color.G, entry.Color.B)
+		if name == "" {
+			name = hex
+		}
+		block := fmt.Sprintf("\x1b[48;2;%d;%d;%dm  \x1b[0m", entry.Color.R, entry.Color.G, entry.Color.B)
+		suffix := ""
+		if _, ok := i.defaultPaletteSet[entry.Color]; !ok {
+			suffix = " (custom)"
+		}
+		fmt.Fprintf(os.Stdout, "%s %2d: %-12s %s %s%s\n", marker, idx, name, hex, block, suffix)
+	}
+}
+
+func (i *interactiveCmd) printWidthList() {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	if len(i.widths) == 0 {
+		fmt.Fprintln(os.Stdout, "no widths available")
+		return
+	}
+	current := clampIndex(i.widthIdx, len(i.widths))
+	for idx, w := range i.widths {
+		marker := " "
+		if idx == current {
+			marker = "*"
+		}
+		suffix := ""
+		if _, ok := i.defaultWidthSet[w]; !ok {
+			suffix = " (custom)"
+		}
+		fmt.Fprintf(os.Stdout, "%s %3dpx%s\n", marker, w, suffix)
+	}
+}
+
+func (i *interactiveCmd) applyColorIndex(idx int) {
 	i.mu.Lock()
-	i.widthIdx = idx
+	i.colorIdx = clampIndex(idx, len(i.palette))
+	colorIdx := i.colorIdx
+	widthIdx := clampIndex(i.widthIdx, len(i.widths))
+	state := i.state
+	msg := fmt.Sprintf("color set to %s", formatColor(i.palette, colorIdx))
+	i.mu.Unlock()
+	if state != nil {
+		state.ApplySettings(colorIdx, widthIdx)
+	}
+	fmt.Fprintln(os.Stdout, msg)
+	i.printColorList()
+}
+
+func (i *interactiveCmd) applyWidthIndex(idx int) {
+	i.mu.Lock()
+	i.widthIdx = clampIndex(idx, len(i.widths))
+	widthIdx := i.widthIdx
+	width := widthAt(i.widths, widthIdx)
 	colorIdx := i.colorIdx
 	state := i.state
 	i.mu.Unlock()
 	if state != nil {
-		state.ApplySettings(colorIdx, idx)
+		state.ApplySettings(colorIdx, widthIdx)
 	}
-	fmt.Fprintf(os.Stdout, "width set to %dpx\n", i.widths[idx])
+	fmt.Fprintf(os.Stdout, "width set to %dpx\n", width)
+	i.printWidthList()
 }
 
 func (i *interactiveCmd) handleShow(copyImage bool) {
@@ -386,21 +503,52 @@ func (i *interactiveCmd) handleSave(args []string) {
 		return
 	}
 	path := args[0]
-	if err := i.withImage(false, func(img *image.RGBA) error {
-		f, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		return png.Encode(f, img)
-	}); err != nil {
+	if path == "" {
+		fmt.Fprintln(os.Stderr, "path must not be empty")
+		return
+	}
+	if err := i.saveToPath(path); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
 	}
-	i.mu.Lock()
-	i.output = path
-	i.mu.Unlock()
-	fmt.Fprintf(os.Stdout, "saved %s\n", path)
+	i.finalizeSave(path)
+}
+
+func (i *interactiveCmd) handleSaveTmp() {
+	path, err := i.saveToTmp()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	i.finalizeSave(path)
+}
+
+func (i *interactiveCmd) handleSavePictures() {
+	dir, err := picturesDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	path, err := i.saveAuto(dir, "shineyshot")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	i.finalizeSave(path)
+}
+
+func (i *interactiveCmd) handleSaveHome() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	path, err := i.saveAuto(home, "shineyshot")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	i.finalizeSave(path)
 }
 
 func (i *interactiveCmd) handleCopy() {
@@ -481,7 +629,121 @@ func (i *interactiveCmd) notifyLocked() {
 func (i *interactiveCmd) strokeLocked() (color.Color, int) {
 	idx := clampIndex(i.colorIdx, len(i.palette))
 	widthIdx := clampIndex(i.widthIdx, len(i.widths))
-	return i.palette[idx], i.widths[widthIdx]
+	return i.palette[idx].Color, i.widths[widthIdx]
+}
+
+func parseHexColor(s string) (color.RGBA, error) {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "#") {
+		s = s[1:]
+	}
+	if len(s) != 6 {
+		return color.RGBA{}, fmt.Errorf("expected 6 hexadecimal digits")
+	}
+	v, err := strconv.ParseUint(s, 16, 32)
+	if err != nil {
+		return color.RGBA{}, err
+	}
+	return color.RGBA{R: uint8(v >> 16), G: uint8((v >> 8) & 0xFF), B: uint8(v & 0xFF), A: 255}, nil
+}
+
+func (i *interactiveCmd) saveToPath(path string) error {
+	return i.withImage(false, func(img *image.RGBA) error {
+		dir := filepath.Dir(path)
+		if dir != "" && dir != "." {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		return png.Encode(f, img)
+	})
+}
+
+func (i *interactiveCmd) saveToTmp() (string, error) {
+	var path string
+	err := i.withImage(false, func(img *image.RGBA) error {
+		f, err := os.CreateTemp("/tmp", "shineyshot-*.png")
+		if err != nil {
+			return err
+		}
+		path = f.Name()
+		if err := png.Encode(f, img); err != nil {
+			f.Close()
+			return err
+		}
+		return f.Close()
+	})
+	return path, err
+}
+
+func (i *interactiveCmd) saveAuto(dir, prefix string) (string, error) {
+	ts := time.Now().Format("20060102-150405")
+	base := fmt.Sprintf("%s-%s.png", prefix, ts)
+	path := filepath.Join(dir, base)
+	counter := 1
+	for {
+		if _, err := os.Stat(path); err == nil {
+			path = filepath.Join(dir, fmt.Sprintf("%s-%s-%02d.png", prefix, ts, counter))
+			counter++
+			continue
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		break
+	}
+	if err := i.saveToPath(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func picturesDir() (string, error) {
+	if dir := os.Getenv("XDG_PICTURES_DIR"); dir != "" {
+		return expandUserPath(dir)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "Pictures"), nil
+}
+
+func expandUserPath(p string) (string, error) {
+	if p == "" {
+		return "", fmt.Errorf("path is empty")
+	}
+	if strings.HasPrefix(p, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if p == "~" {
+			return home, nil
+		}
+		if strings.HasPrefix(p, "~/") {
+			return filepath.Join(home, p[2:]), nil
+		}
+	}
+	if filepath.IsAbs(p) {
+		return p, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, p), nil
+}
+
+func (i *interactiveCmd) finalizeSave(path string) {
+	i.mu.Lock()
+	i.output = path
+	i.mu.Unlock()
+	fmt.Fprintf(os.Stdout, "saved %s\n", path)
 }
 
 func parseInts(args []string, count int) ([]int, error) {
@@ -512,22 +774,17 @@ func clampIndex(idx, size int) int {
 	return idx
 }
 
-func formatColor(palette []color.RGBA, idx int) string {
+func formatColor(palette []appstate.PaletteColor, idx int) string {
 	if len(palette) == 0 {
 		return ""
 	}
 	idx = clampIndex(idx, len(palette))
-	col := palette[idx]
-	return fmt.Sprintf("(#%02X%02X%02X)", col.R, col.G, col.B)
-}
-
-func findWidthIndex(widths []int, target int) int {
-	for idx, w := range widths {
-		if w == target {
-			return idx
-		}
+	entry := palette[idx]
+	hex := fmt.Sprintf("#%02X%02X%02X", entry.Color.R, entry.Color.G, entry.Color.B)
+	if entry.Name == "" {
+		return hex
 	}
-	return -1
+	return fmt.Sprintf("%s (%s)", entry.Name, hex)
 }
 
 func widthAt(widths []int, idx int) int {

@@ -88,32 +88,6 @@ type controlEvent struct {
 	WidthIdx *int
 }
 
-func clampColorIndex(idx int) int {
-	if len(palette) == 0 {
-		return 0
-	}
-	if idx < 0 {
-		return 0
-	}
-	if idx >= len(palette) {
-		return len(palette) - 1
-	}
-	return idx
-}
-
-func clampWidthIndex(idx int) int {
-	if len(widths) == 0 {
-		return 0
-	}
-	if idx < 0 {
-		return 0
-	}
-	if idx >= len(widths) {
-		return len(widths) - 1
-	}
-	return idx
-}
-
 // NotifyImageChanged requests a repaint of the UI when the image mutates.
 func (a *AppState) NotifyImageChanged() {
 	if a.updateCh == nil {
@@ -270,7 +244,7 @@ func (a *AppState) Main(s screen.Screen) {
 		}
 	}()
 
-	col := palette[colorIdx]
+	col := paletteColorAt(colorIdx)
 	tabs[current].Zoom = fitZoom(rgba, width, height)
 	a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 
@@ -392,7 +366,7 @@ func (a *AppState) Main(s screen.Screen) {
 	})
 
 	register("textdone", shortcutList{{Code: key.CodeReturnEnter}}, func() {
-		d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+		d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(paletteColorAt(colorIdx)), Face: textFaces[textSizeIdx]}
 		d.Dot = fixed.P(textPos.X, textPos.Y)
 		d.DrawString(textInput)
 		textInputActive = false
@@ -436,7 +410,7 @@ func (a *AppState) Main(s screen.Screen) {
 		case controlEvent:
 			if e.ColorIdx != nil {
 				colorIdx = clampColorIndex(*e.ColorIdx)
-				col = palette[colorIdx]
+				col = paletteColorAt(colorIdx)
 			}
 			if e.WidthIdx != nil {
 				tabs[current].WidthIdx = clampWidthIndex(*e.WidthIdx)
@@ -550,16 +524,16 @@ func (a *AppState) Main(s screen.Screen) {
 				pos -= len(toolButtons) * 24
 				pos -= 4
 				paletteCols := toolbarWidth / 18
-				rows := (len(palette) + paletteCols - 1) / paletteCols
+				rows := (paletteLen() + paletteCols - 1) / paletteCols
 				paletteHeight := rows * 18
 				if pos >= 0 && pos < paletteHeight {
 					colX := (int(e.X) - 4) / 18
 					colY := pos / 18
 					cidx := colY*paletteCols + colX
-					if cidx >= 0 && cidx < len(palette) {
+					if cidx >= 0 && cidx < paletteLen() {
 						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
 							colorIdx = cidx
-							col = palette[colorIdx]
+							col = paletteColorAt(colorIdx)
 							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 						}
 						hoverPalette = cidx
@@ -576,7 +550,7 @@ func (a *AppState) Main(s screen.Screen) {
 				pos -= 4
 				if (tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow || tool == ToolRect) && pos >= 0 {
 					widx := pos / 16
-					if widx >= 0 && widx < len(widths) {
+					if widx >= 0 && widx < widthsLen() {
 						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
 							tabs[current].WidthIdx = widx
 							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
@@ -740,21 +714,21 @@ func (a *AppState) Main(s screen.Screen) {
 							if last.Y > maxY {
 								maxY = last.Y
 							}
-							br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+							br := image.Rect(minX, minY, maxX, maxY).Inset(-widthAt(tabs[current].WidthIdx) - 2)
 							shift := ensureCanvasContains(&tabs[current], br)
 							last = last.Sub(shift)
 							mx -= shift.X
 							my -= shift.Y
-							drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
+							drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widthAt(tabs[current].WidthIdx))
 						case ToolCircle:
 							rx := int(math.Abs(float64(mx - last.X)))
 							ry := int(math.Abs(float64(my - last.Y)))
-							br := image.Rect(last.X-rx-widths[tabs[current].WidthIdx], last.Y-ry-widths[tabs[current].WidthIdx], last.X+rx+widths[tabs[current].WidthIdx]+1, last.Y+ry+widths[tabs[current].WidthIdx]+1)
+							br := image.Rect(last.X-rx-widthAt(tabs[current].WidthIdx), last.Y-ry-widthAt(tabs[current].WidthIdx), last.X+rx+widthAt(tabs[current].WidthIdx)+1, last.Y+ry+widthAt(tabs[current].WidthIdx)+1)
 							shift := ensureCanvasContains(&tabs[current], br)
 							last = last.Sub(shift)
 							mx -= shift.X
 							my -= shift.Y
-							drawEllipse(tabs[current].Image, last.X, last.Y, rx, ry, col, widths[tabs[current].WidthIdx])
+							drawEllipse(tabs[current].Image, last.X, last.Y, rx, ry, col, widthAt(tabs[current].WidthIdx))
 						case ToolLine:
 							minX, minY := last.X, last.Y
 							maxX, maxY := mx, my
@@ -770,12 +744,12 @@ func (a *AppState) Main(s screen.Screen) {
 							if last.Y > maxY {
 								maxY = last.Y
 							}
-							br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+							br := image.Rect(minX, minY, maxX, maxY).Inset(-widthAt(tabs[current].WidthIdx) - 2)
 							shift := ensureCanvasContains(&tabs[current], br)
 							last = last.Sub(shift)
 							mx -= shift.X
 							my -= shift.Y
-							drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
+							drawLine(tabs[current].Image, last.X, last.Y, mx, my, col, widthAt(tabs[current].WidthIdx))
 						case ToolArrow:
 							minX, minY := last.X, last.Y
 							maxX, maxY := mx, my
@@ -791,12 +765,12 @@ func (a *AppState) Main(s screen.Screen) {
 							if last.Y > maxY {
 								maxY = last.Y
 							}
-							br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 10)
+							br := image.Rect(minX, minY, maxX, maxY).Inset(-widthAt(tabs[current].WidthIdx) - 10)
 							shift := ensureCanvasContains(&tabs[current], br)
 							last = last.Sub(shift)
 							mx -= shift.X
 							my -= shift.Y
-							drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col, widths[tabs[current].WidthIdx])
+							drawArrow(tabs[current].Image, last.X, last.Y, mx, my, col, widthAt(tabs[current].WidthIdx))
 						case ToolRect:
 							minX, minY := last.X, last.Y
 							maxX, maxY := mx, my
@@ -812,12 +786,12 @@ func (a *AppState) Main(s screen.Screen) {
 							if last.Y > maxY {
 								maxY = last.Y
 							}
-							br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+							br := image.Rect(minX, minY, maxX, maxY).Inset(-widthAt(tabs[current].WidthIdx) - 2)
 							shift := ensureCanvasContains(&tabs[current], br)
 							last = last.Sub(shift)
 							mx -= shift.X
 							my -= shift.Y
-							drawRect(tabs[current].Image, image.Rect(last.X, last.Y, mx, my), col, widths[tabs[current].WidthIdx])
+							drawRect(tabs[current].Image, image.Rect(last.X, last.Y, mx, my), col, widthAt(tabs[current].WidthIdx))
 						case ToolNumber:
 							s := numberSizes[numberIdx]
 							br := image.Rect(mx-s, my-s, mx+s, my+s)
@@ -893,11 +867,11 @@ func (a *AppState) Main(s screen.Screen) {
 				if last.Y > maxY {
 					maxY = last.Y
 				}
-				br := image.Rect(minX, minY, maxX, maxY).Inset(-widths[tabs[current].WidthIdx] - 2)
+				br := image.Rect(minX, minY, maxX, maxY).Inset(-widthAt(tabs[current].WidthIdx) - 2)
 				shift := ensureCanvasContains(&tabs[current], br)
 				last = last.Sub(shift)
 				p = p.Sub(shift)
-				drawLine(tabs[current].Image, last.X, last.Y, p.X, p.Y, col, widths[tabs[current].WidthIdx])
+				drawLine(tabs[current].Image, last.X, last.Y, p.X, p.Y, col, widthAt(tabs[current].WidthIdx))
 				last = p
 				w.Send(paint.Event{})
 			}
@@ -918,7 +892,7 @@ func (a *AppState) Main(s screen.Screen) {
 						br := image.Rect(textPos.X, textPos.Y-metrics.Ascent.Ceil(), textPos.X+width, textPos.Y+metrics.Descent.Ceil())
 						shift := ensureCanvasContains(&tabs[current], br)
 						textPos = textPos.Sub(shift)
-						d = &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(palette[colorIdx]), Face: textFaces[textSizeIdx]}
+						d = &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(paletteColorAt(colorIdx)), Face: textFaces[textSizeIdx]}
 						d.Dot = fixed.P(textPos.X, textPos.Y)
 						d.DrawString(textInput)
 						textInputActive = false
