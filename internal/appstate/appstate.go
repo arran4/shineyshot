@@ -140,20 +140,22 @@ var textSizes = []float64{12, 16, 20, 24, 32}
 var textFaces []font.Face
 var textSizeIdx int
 var messageFace font.Face
+var goregularFont *opentype.Font
 
 func init() {
-	f, err := opentype.Parse(goregular.TTF)
+	var err error
+	goregularFont, err = opentype.Parse(goregular.TTF)
 	if err != nil {
 		log.Fatalf("parse font: %v", err)
 	}
 	for _, sz := range textSizes {
-		face, err := opentype.NewFace(f, &opentype.FaceOptions{Size: sz, DPI: 72, Hinting: font.HintingFull})
+		face, err := opentype.NewFace(goregularFont, &opentype.FaceOptions{Size: sz, DPI: 72, Hinting: font.HintingFull})
 		if err != nil {
 			log.Fatalf("font face: %v", err)
 		}
 		textFaces = append(textFaces, face)
 	}
-	messageFace, err = opentype.NewFace(f, &opentype.FaceOptions{Size: 48, DPI: 72, Hinting: font.HintingFull})
+	messageFace, err = opentype.NewFace(goregularFont, &opentype.FaceOptions{Size: 48, DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
 		log.Fatalf("font face: %v", err)
 	}

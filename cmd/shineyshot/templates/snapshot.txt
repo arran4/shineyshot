@@ -1,2 +1,3 @@
 Usage: {{.Program}} snapshot [flags]
+Capture a PNG using the XDG desktop portal on Linux.
 {{template "flags" .FlagSet}}
