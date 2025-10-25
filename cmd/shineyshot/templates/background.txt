@@ -1,0 +1,16 @@
+Usage: {{.Program}} background <start|stop|list|clean|attach|run> [options]
+Manage background interactive socket sessions.
+
+Subcommands:
+  start   Launch a socket server. Accepts --name NAME (auto-numbered when omitted) and --dir DIR.
+  stop    Request shutdown of a socket server. Accepts optional NAME and --dir DIR.
+  list    List socket sessions. Accepts --dir DIR.
+  clean   Remove dead or unreachable socket files. Accepts --dir DIR.
+  attach  Attach to a running session. Accepts optional NAME and --dir DIR.
+  run     Invoke interactive commands with CLI-style arguments. Accepts optional NAME and --dir DIR.
+
+Run `{{.Program}} background <subcommand> -h` or `--help` for detailed options.
+
+Examples:
+  {{.Program}} background run capture screen
+  {{.Program}} background run MySession line 1 1 100 100
