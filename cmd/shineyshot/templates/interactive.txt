@@ -1,7 +1,12 @@
 Usage: {{.Program}} interactive
 Starts an interactive shell. Available commands:
-  screenshot                capture a full screen screenshot
+  capture screen            capture a full screen screenshot
+  capture window            capture the active window
+  capture region            capture a region of the screen
   arrow x0 y0 x1 y1         draw an arrow on the image
+  line x0 y0 x1 y1          draw a line on the image
+  rect x0 y0 x1 y1          draw a rectangle on the image
+  circle x y r              draw a circle on the image
   crop x0 y0 x1 y1          crop the current image
   show                      preview the image in a window
   save FILE                 save the image to FILE

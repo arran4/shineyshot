@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"math"
 	"os"
 	"os/exec"
 	"strconv"
@@ -22,32 +21,6 @@ type interactiveCmd struct {
 	r      *root
 	img    *image.RGBA
 	output string
-}
-
-func drawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
-	appstate.DrawLine(img, x0, y0, x1, y1, col, thick)
-	angle := math.Atan2(float64(y1-y0), float64(x1-x0))
-	size := float64(6 + thick*2)
-	a1 := angle + math.Pi/6
-	a2 := angle - math.Pi/6
-	x2 := x1 - int(math.Cos(a1)*size)
-	y2 := y1 - int(math.Sin(a1)*size)
-	x3 := x1 - int(math.Cos(a2)*size)
-	y3 := y1 - int(math.Sin(a2)*size)
-	appstate.DrawLine(img, x1, y1, x2, y2, col, thick)
-	appstate.DrawLine(img, x1, y1, x3, y3, col, thick)
-}
-
-func cropImage(img *image.RGBA, rect image.Rectangle) *image.RGBA {
-	if rect.Empty() {
-		return img
-	}
-	out := image.NewRGBA(image.Rect(0, 0, rect.Dx(), rect.Dy()))
-	src := rect.Intersect(img.Bounds())
-	if !src.Empty() {
-		draw.Draw(out, src.Sub(rect.Min), img, src.Min, draw.Src)
-	}
-	return out
 }
 
 func (i *interactiveCmd) Run() error {
@@ -71,8 +44,13 @@ func (i *interactiveCmd) Run() error {
 			return nil
 		case "help":
 			fmt.Fprintln(os.Stdout, "Commands:")
-			fmt.Fprintln(os.Stdout, "  screenshot                capture full screen")
+			fmt.Fprintln(os.Stdout, "  capture screen            capture full screen")
+			fmt.Fprintln(os.Stdout, "  capture window            capture active window")
+			fmt.Fprintln(os.Stdout, "  capture region            capture screen region")
 			fmt.Fprintln(os.Stdout, "  arrow x0 y0 x1 y1         draw arrow")
+			fmt.Fprintln(os.Stdout, "  line x0 y0 x1 y1          draw line")
+			fmt.Fprintln(os.Stdout, "  rect x0 y0 x1 y1          draw rectangle")
+			fmt.Fprintln(os.Stdout, "  circle x y r              draw circle")
 			fmt.Fprintln(os.Stdout, "  crop x0 y0 x1 y1          crop image")
 			fmt.Fprintln(os.Stdout, "  show                      display annotation window")
 			fmt.Fprintln(os.Stdout, "  save FILE                 save image")
@@ -80,14 +58,32 @@ func (i *interactiveCmd) Run() error {
 			fmt.Fprintln(os.Stdout, "  copyname                  copy saved filename")
 			fmt.Fprintln(os.Stdout, "  quit                      exit interactive mode")
 			continue
-		case "screenshot":
-			img, err := capture.CaptureScreenshot()
+		case "capture":
+			if len(args) < 1 {
+				fmt.Fprintln(os.Stderr, "usage: capture [screen|window|region]")
+				continue
+			}
+			var (
+				img *image.RGBA
+				err error
+			)
+			switch args[0] {
+			case "screen":
+				img, err = capture.CaptureScreenshot()
+			case "window":
+				img, err = capture.CaptureWindow()
+			case "region":
+				img, err = capture.CaptureRegion()
+			default:
+				fmt.Fprintln(os.Stderr, "usage: capture [screen|window|region]")
+				continue
+			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				continue
 			}
 			i.img = img
-			fmt.Fprintln(os.Stdout, "captured screenshot")
+			fmt.Fprintf(os.Stdout, "captured %s\n", args[0])
 		case "arrow":
 			if len(args) != 4 {
 				fmt.Fprintln(os.Stderr, "usage: arrow x0 y0 x1 y1")
@@ -106,8 +102,68 @@ func (i *interactiveCmd) Run() error {
 					continue
 				}
 			}
-			drawArrow(i.img, vals[0], vals[1], vals[2], vals[3], color.Black, 2)
+			appstate.DrawArrow(i.img, vals[0], vals[1], vals[2], vals[3], color.Black, 2)
 			fmt.Fprintln(os.Stdout, "arrow drawn")
+		case "line":
+			if len(args) != 4 {
+				fmt.Fprintln(os.Stderr, "usage: line x0 y0 x1 y1")
+				continue
+			}
+			if i.img == nil {
+				fmt.Fprintln(os.Stderr, "no image loaded")
+				continue
+			}
+			vals := make([]int, 4)
+			var err error
+			for j := 0; j < 4; j++ {
+				vals[j], err = strconv.Atoi(args[j])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "invalid number %q\n", args[j])
+					continue
+				}
+			}
+			appstate.DrawLine(i.img, vals[0], vals[1], vals[2], vals[3], color.Black, 2)
+			fmt.Fprintln(os.Stdout, "line drawn")
+		case "rect":
+			if len(args) != 4 {
+				fmt.Fprintln(os.Stderr, "usage: rect x0 y0 x1 y1")
+				continue
+			}
+			if i.img == nil {
+				fmt.Fprintln(os.Stderr, "no image loaded")
+				continue
+			}
+			vals := make([]int, 4)
+			var err error
+			for j := 0; j < 4; j++ {
+				vals[j], err = strconv.Atoi(args[j])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "invalid number %q\n", args[j])
+					continue
+				}
+			}
+			appstate.DrawRect(i.img, image.Rect(vals[0], vals[1], vals[2], vals[3]), color.Black, 2)
+			fmt.Fprintln(os.Stdout, "rectangle drawn")
+		case "circle":
+			if len(args) != 3 {
+				fmt.Fprintln(os.Stderr, "usage: circle x y r")
+				continue
+			}
+			if i.img == nil {
+				fmt.Fprintln(os.Stderr, "no image loaded")
+				continue
+			}
+			vals := make([]int, 3)
+			var err error
+			for j := 0; j < 3; j++ {
+				vals[j], err = strconv.Atoi(args[j])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "invalid number %q\n", args[j])
+					continue
+				}
+			}
+			appstate.DrawCircle(i.img, vals[0], vals[1], vals[2], color.Black, 2)
+			fmt.Fprintln(os.Stdout, "circle drawn")
 		case "crop":
 			if len(args) != 4 {
 				fmt.Fprintln(os.Stderr, "usage: crop x0 y0 x1 y1")
@@ -126,7 +182,7 @@ func (i *interactiveCmd) Run() error {
 					continue
 				}
 			}
-			i.img = cropImage(i.img, image.Rect(vals[0], vals[1], vals[2], vals[3]))
+			i.img = appstate.CropImage(i.img, image.Rect(vals[0], vals[1], vals[2], vals[3]))
 			fmt.Fprintln(os.Stdout, "cropped")
 		case "show", "preview":
 			if i.img == nil {

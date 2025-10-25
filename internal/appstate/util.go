@@ -39,3 +39,23 @@ func ExpandCanvas(img *image.RGBA, rect image.Rectangle) (*image.RGBA, image.Poi
 func DrawLine(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
 	drawLine(img, x0, y0, x1, y1, col, thick)
 }
+
+// DrawArrow draws an arrow between the two points with the given thickness and color.
+func DrawArrow(img *image.RGBA, x0, y0, x1, y1 int, col color.Color, thick int) {
+	drawArrow(img, x0, y0, x1, y1, col, thick)
+}
+
+// DrawRect draws a rectangle on the image with the given thickness and color.
+func DrawRect(img *image.RGBA, rect image.Rectangle, col color.Color, thick int) {
+	drawRect(img, rect, col, thick)
+}
+
+// DrawCircle draws a circle centred at (cx, cy) with radius r.
+func DrawCircle(img *image.RGBA, cx, cy, r int, col color.Color, thick int) {
+	drawCircle(img, cx, cy, r, col, thick)
+}
+
+// CropImage returns a copy of the given rectangle from img.
+func CropImage(img *image.RGBA, rect image.Rectangle) *image.RGBA {
+	return cropImage(img, rect)
+}
