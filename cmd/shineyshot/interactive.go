@@ -126,9 +126,9 @@ func (i *interactiveCmd) Run() error {
 
 func (i *interactiveCmd) printHelp() {
 	fmt.Fprintln(os.Stdout, "Commands:")
-	fmt.Fprintln(os.Stdout, "  capture screen [DISPLAY]   capture full screen (defaults to current display)")
-	fmt.Fprintln(os.Stdout, "  capture window WINDOW      capture WINDOW by identifier (not implemented)")
-	fmt.Fprintln(os.Stdout, "  capture region             capture screen region (not implemented)")
+	fmt.Fprintln(os.Stdout, "  capture screen [DISPLAY]   capture full screen; use 'capture screen list' for displays")
+	fmt.Fprintln(os.Stdout, "  capture window [SELECTOR]  capture window by index/id/exec/title; 'capture window list' shows options")
+	fmt.Fprintln(os.Stdout, "  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'capture region list' shows screens")
 	fmt.Fprintln(os.Stdout, "  arrow x0 y0 x1 y1          draw arrow with current stroke")
 	fmt.Fprintln(os.Stdout, "  line x0 y0 x1 y1           draw line with current stroke")
 	fmt.Fprintln(os.Stdout, "  rect x0 y0 x1 y1           draw rectangle with current stroke")
@@ -155,6 +155,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		return
 	}
 	mode := strings.ToLower(args[0])
+	params := args[1:]
 	var (
 		img    *image.RGBA
 		err    error
@@ -162,25 +163,92 @@ func (i *interactiveCmd) handleCapture(args []string) {
 	)
 	switch mode {
 	case "screen":
+		if len(params) >= 1 && strings.EqualFold(params[0], "list") {
+			i.printScreenList()
+			return
+		}
 		display := ""
-		if len(args) >= 2 {
-			display = args[1]
+		if len(params) >= 1 {
+			display = strings.Join(params, " ")
 		}
 		img, err = capture.CaptureScreenshot(display)
 		if err != nil && display == "" {
-			display = "0"
-			img, err = capture.CaptureScreenshot(display)
+			img, err = capture.CaptureScreenshot("0")
+			if err == nil {
+				target = "display 0"
+			}
 		}
-		target = display
-	case "window":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: capture window WINDOW")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			if len(params) == 0 || display != "" {
+				i.printScreenList()
+			}
 			return
 		}
-		target = args[1]
-		img, err = capture.CaptureWindow(target)
+		if target == "" {
+			if display != "" {
+				target = fmt.Sprintf("display %s", display)
+			} else {
+				target = "current display"
+			}
+		}
+	case "window":
+		if len(params) >= 1 && strings.EqualFold(params[0], "list") {
+			i.printWindowList()
+			return
+		}
+		selector := ""
+		if len(params) > 0 {
+			selector = strings.Join(params, " ")
+		}
+		var info capture.WindowInfo
+		img, info, err = capture.CaptureWindowDetailed(selector)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			i.printWindowList()
+			return
+		}
+		target = formatWindowLabel(info)
 	case "region":
-		img, err = capture.CaptureRegion()
+		if len(params) >= 1 && strings.EqualFold(params[0], "list") {
+			i.printScreenList()
+			return
+		}
+		if len(params) < 5 {
+			fmt.Fprintln(os.Stderr, "usage: capture region SCREEN X Y WIDTH HEIGHT")
+			i.printScreenList()
+			return
+		}
+		monitors, mErr := capture.ListMonitors()
+		if mErr != nil {
+			fmt.Fprintln(os.Stderr, mErr)
+			return
+		}
+		monitor, mErr := capture.FindMonitor(monitors, params[0])
+		if mErr != nil {
+			fmt.Fprintln(os.Stderr, mErr)
+			i.printScreenList()
+			return
+		}
+		coords, cErr := parseInts(params[1:], 4)
+		if cErr != nil {
+			fmt.Fprintln(os.Stderr, cErr)
+			return
+		}
+		if coords[2] <= 0 || coords[3] <= 0 {
+			fmt.Fprintln(os.Stderr, "width and height must be positive")
+			return
+		}
+		rect := image.Rect(
+			monitor.Rect.Min.X+coords[0],
+			monitor.Rect.Min.Y+coords[1],
+			monitor.Rect.Min.X+coords[0]+coords[2],
+			monitor.Rect.Min.Y+coords[1]+coords[3],
+		)
+		img, err = capture.CaptureRegionRect(rect)
+		if err == nil {
+			target = fmt.Sprintf("%s @ %dx%d+%d,%d", formatMonitorName(monitor), coords[2], coords[3], coords[0], coords[1])
+		}
 	default:
 		fmt.Fprintln(os.Stderr, "usage: capture [screen|window|region] ...")
 		return
@@ -192,8 +260,6 @@ func (i *interactiveCmd) handleCapture(args []string) {
 	i.setImage(img)
 	if target != "" {
 		fmt.Fprintf(os.Stdout, "captured %s %s\n", mode, target)
-	} else if mode == "screen" {
-		fmt.Fprintln(os.Stdout, "captured screen (current display)")
 	} else {
 		fmt.Fprintf(os.Stdout, "captured %s\n", mode)
 	}
@@ -403,6 +469,74 @@ func (i *interactiveCmd) printWidthList() {
 		}
 		fmt.Fprintf(os.Stdout, "%s %3dpx%s\n", marker, w, suffix)
 	}
+}
+
+func (i *interactiveCmd) printScreenList() {
+	monitors, err := capture.ListMonitors()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	if len(monitors) == 0 {
+		fmt.Fprintln(os.Stdout, "no screens available")
+		return
+	}
+	fmt.Fprintln(os.Stdout, "available screens:")
+	for _, mon := range monitors {
+		primary := ""
+		if mon.Primary {
+			primary = " [primary]"
+		}
+		rect := mon.Rect
+		fmt.Fprintf(os.Stdout, "  %s -> %dx%d+%d,%d%s\n", formatMonitorName(mon), rect.Dx(), rect.Dy(), rect.Min.X, rect.Min.Y, primary)
+	}
+}
+
+func formatMonitorName(mon capture.MonitorInfo) string {
+	if mon.Name != "" {
+		return fmt.Sprintf("#%d %s", mon.Index, mon.Name)
+	}
+	return fmt.Sprintf("#%d", mon.Index)
+}
+
+func (i *interactiveCmd) printWindowList() {
+	windows, err := capture.ListWindows()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+	if len(windows) == 0 {
+		fmt.Fprintln(os.Stdout, "no windows available")
+		return
+	}
+	fmt.Fprintln(os.Stdout, "available windows (* marks the active window):")
+	for _, win := range windows {
+		marker := " "
+		if win.Active {
+			marker = "*"
+		}
+		fmt.Fprintf(os.Stdout, "%s %s\n", marker, formatWindowLabel(win))
+	}
+	fmt.Fprintln(os.Stdout, "selectors: index:<n>, id:<hex>, pid:<pid>, exec:<name>, class:<name>, substring match")
+}
+
+func formatWindowLabel(info capture.WindowInfo) string {
+	title := info.Title
+	if title == "" {
+		title = "(untitled)"
+	}
+	meta := make([]string, 0, 2)
+	if info.Executable != "" {
+		meta = append(meta, fmt.Sprintf("exec:%s", info.Executable))
+	}
+	if info.Class != "" {
+		meta = append(meta, fmt.Sprintf("class:%s", info.Class))
+	}
+	extra := ""
+	if len(meta) > 0 {
+		extra = " (" + strings.Join(meta, ", ") + ")"
+	}
+	return fmt.Sprintf("#%d %q%s id:0x%X", info.Index, title, extra, info.ID)
 }
 
 func (i *interactiveCmd) applyColorIndex(idx int) {
