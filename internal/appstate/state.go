@@ -1,10 +1,10 @@
 package appstate
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"github.com/example/shineyshot/internal/capture"
+	"github.com/example/shineyshot/internal/clipboard"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
@@ -14,7 +14,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"sync"
 	"time"
 	"unicode"
@@ -310,14 +309,9 @@ func (a *AppState) Main(s screen.Screen) {
 	})
 
 	register("paste", shortcutList{{Rune: 'v', Modifiers: key.ModControl}}, func() {
-		out, err := exec.Command("wl-paste", "--no-newline", "--type", "image/png").Output()
+		img, err := clipboard.ReadImage()
 		if err != nil {
 			log.Printf("paste: %v", err)
-			return
-		}
-		img, err := png.Decode(bytes.NewReader(out))
-		if err != nil {
-			log.Printf("paste decode: %v", err)
 			return
 		}
 		rgba := image.NewRGBA(img.Bounds())
@@ -339,17 +333,13 @@ func (a *AppState) Main(s screen.Screen) {
 	})
 
 	register("copy", shortcutList{{Rune: 'c', Modifiers: key.ModControl}}, func() {
-		var buf bytes.Buffer
-		png.Encode(&buf, tabs[current].Image)
-		cmd := exec.Command("wl-copy", "--type", "image/png")
-		cmd.Stdin = &buf
-		if err := cmd.Run(); err != nil {
+		if err := clipboard.WriteImage(tabs[current].Image); err != nil {
 			log.Printf("copy: %v", err)
-		} else {
-			message = "image copied to clipboard"
-			log.Print(message)
-			messageUntil = time.Now().Add(2 * time.Second)
+			return
 		}
+		message = "image copied to clipboard"
+		log.Print(message)
+		messageUntil = time.Now().Add(2 * time.Second)
 	})
 
 	register("save", shortcutList{{Rune: 's', Modifiers: key.ModControl}}, func() {

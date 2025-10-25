@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -10,7 +9,6 @@ import (
 	"image/png"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +17,7 @@ import (
 
 	"github.com/example/shineyshot/internal/appstate"
 	"github.com/example/shineyshot/internal/capture"
+	"github.com/example/shineyshot/internal/clipboard"
 )
 
 type interactiveCmd struct {
@@ -751,13 +750,7 @@ func (i *interactiveCmd) handleSaveHome() {
 
 func (i *interactiveCmd) handleCopy() {
 	if err := i.withImage(false, func(img *image.RGBA) error {
-		var buf bytes.Buffer
-		if err := png.Encode(&buf, img); err != nil {
-			return err
-		}
-		cmd := exec.Command("wl-copy", "--type", "image/png")
-		cmd.Stdin = &buf
-		return cmd.Run()
+		return clipboard.WriteImage(img)
 	}); err != nil {
 		fmt.Fprintln(i.stderr, err)
 		return
@@ -773,9 +766,7 @@ func (i *interactiveCmd) handleCopyName() {
 		fmt.Fprintln(i.stderr, "no saved file")
 		return
 	}
-	cmd := exec.Command("wl-copy")
-	cmd.Stdin = strings.NewReader(output)
-	if err := cmd.Run(); err != nil {
+	if err := clipboard.WriteText(output); err != nil {
 		fmt.Fprintln(i.stderr, err)
 		return
 	}
