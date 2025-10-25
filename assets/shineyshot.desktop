@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Shineyshot
+GenericName=Screenshot Tool
+Comment=Capture, annotate, and share screenshots on X11 and Wayland.
+Exec=shineyshot interactive
+TryExec=shineyshot
+Icon=shineyshot
+Terminal=false
+Categories=Graphics;Utility;
+Keywords=Screenshot;Capture;Annotate;Wayland;X11;
+StartupNotify=true

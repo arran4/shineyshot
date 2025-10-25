@@ -1,0 +1,89 @@
+project_name: shineyshot
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: shineyshot
+    main: ./cmd/shineyshot
+    binary: shineyshot
+    gobinary: go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      # - darwin # Commented out until non-X11/Wayland platforms are supported.
+      # - windows # Commented out until non-X11/Wayland platforms are supported.
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - 386
+    goarm:
+      - 6
+      - 7
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+      - -X main.date={{ .Date }}
+    flags:
+      - -trimpath
+
+archives:
+  - id: release-archives
+    builds:
+      - shineyshot
+    format: tar.gz
+    format_overrides:
+      # - goos: windows
+      #   format: zip
+    files:
+      - README.md
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "linux" }}Linux{{ else }}{{ title .Os }}{{ end }}_{{- if eq .Arch "386" }}i386{{ else if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{- with .Arm }}v{{ . }}{{ end }}'
+
+checksum:
+  name_template: '{{ .ProjectName }}_checksums.txt'
+
+nfpms:
+  - id: linux-packages
+    package_name: shineyshot
+    maintainer: 'Arran4 <arran4@arran4.com>'
+    description: 'Shineyshot provides screenshot tooling tailored for X11/Wayland environments.'
+    homepage: 'https://github.com/arran4/shineyshot'
+    license: AGPL-3.0-only
+    vendor: Shineyshot
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/shineyshot/README.md
+        type: doc
+      - src: assets/shineyshot.desktop
+        dst: /usr/share/applications/shineyshot.desktop
+      - src: assets/icons/shineyshot.svg
+        dst: /usr/share/icons/hicolor/scalable/apps/shineyshot.svg
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^chore:'
+      - '^test:'
+
+release:
+  github:
+    owner: arran4
+    name: shineyshot
+  draft: false
+  prerelease: auto
+  footer: |
+    ### shineyshot binaries
+    Thanks for downloading shineyshot! If you run into any problems, please open an issue at https://github.com/arran4/shineyshot/issues.
+
