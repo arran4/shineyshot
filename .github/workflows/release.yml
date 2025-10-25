@@ -19,14 +19,18 @@ jobs:
   create-tag:
     name: Create tag
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    outputs:
+      created_tag: ${{ steps.validate_tag.outputs.tag }}
     steps:
       - name: Checkout
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Validate tag input
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        id: validate_tag
         run: |
           TAG="${{ inputs.tag }}"
           if ! echo "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'; then
@@ -38,29 +42,46 @@ jobs:
             exit 1
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Configure git user
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
 
       - name: Create and push tag
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          TAG: ${{ steps.validate_tag.outputs.tag }}
         run: |
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
 
+      - name: Skip tag creation for push events
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        run: echo "Tag creation step skipped for event ${{ github.event_name }}"
+
   goreleaser:
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: create-tag
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && startsWith(needs.create-tag.outputs.created_tag, 'v'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.create-tag.outputs.created_tag || github.ref }}
 
       - name: Validate semantic version tag
         run: |
-          TAG="${GITHUB_REF##*/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ needs.create-tag.outputs.created_tag }}"
+          else
+            TAG="${GITHUB_REF##*/}"
+          fi
           if ! echo "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'; then
             echo "Tag $TAG is not a semantic version (see https://semver.org)."
             exit 1
