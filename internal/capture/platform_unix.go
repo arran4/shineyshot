@@ -1,13 +1,13 @@
+//go:build linux || freebsd || openbsd || netbsd || dragonfly
+
 package capture
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"image"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/jezek/xgb"
@@ -15,35 +15,13 @@ import (
 	"github.com/jezek/xgb/xproto"
 )
 
-// MonitorInfo describes an individual monitor in the X11 layout.
-type MonitorInfo struct {
-	Index   int
-	Name    string
-	Rect    image.Rectangle
-	Primary bool
+type x11Backend struct{}
+
+func newBackend() platformBackend {
+	return x11Backend{}
 }
 
-// WindowInfo describes a top-level window available for capture.
-type WindowInfo struct {
-	Index      int
-	ID         uint32
-	Title      string
-	Class      string
-	Instance   string
-	PID        uint32
-	Executable string
-	Rect       image.Rectangle
-	Monitor    int
-	Active     bool
-}
-
-var (
-	errNoMonitors = errors.New("no monitors available")
-	errNoWindows  = errors.New("no windows available")
-)
-
-// ListMonitors retrieves all monitors using the X RandR extension.
-func ListMonitors() ([]MonitorInfo, error) {
+func (x11Backend) ListMonitors() ([]MonitorInfo, error) {
 	conn, err := xgb.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("connect X server: %w", err)
@@ -73,8 +51,7 @@ func ListMonitors() ([]MonitorInfo, error) {
 	return monitors, nil
 }
 
-// ListWindows retrieves the available top-level windows in stacking order.
-func ListWindows() ([]WindowInfo, error) {
+func (x11Backend) ListWindows() ([]WindowInfo, error) {
 	conn, err := xgb.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("connect X server: %w", err)
@@ -101,6 +78,84 @@ func ListWindows() ([]WindowInfo, error) {
 		return nil, errNoWindows
 	}
 	return windows, nil
+}
+
+func (x11Backend) CaptureWindowImage(id uint32) (*image.RGBA, error) {
+	conn, err := xgb.NewConn()
+	if err != nil {
+		return nil, fmt.Errorf("connect X server: %w", err)
+	}
+	defer conn.Close()
+
+	geom, err := xproto.GetGeometry(conn, xproto.Drawable(id)).Reply()
+	if err != nil {
+		return nil, fmt.Errorf("window geometry: %w", err)
+	}
+	width := int(geom.Width)
+	height := int(geom.Height)
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("window has empty geometry")
+	}
+
+	setup := xproto.Setup(conn)
+	if setup == nil {
+		return nil, fmt.Errorf("xproto setup unavailable")
+	}
+
+	reply, err := xproto.GetImage(conn, xproto.ImageFormatZPixmap, xproto.Drawable(id), 0, 0, geom.Width, geom.Height, ^uint32(0)).Reply()
+	if err != nil {
+		return nil, fmt.Errorf("window pixels: %w", err)
+	}
+	if len(reply.Data) == 0 {
+		return nil, fmt.Errorf("window pixels: empty image data")
+	}
+
+	bitsPerPixel := 0
+	for _, format := range setup.PixmapFormats {
+		if format.Depth == reply.Depth {
+			bitsPerPixel = int(format.BitsPerPixel)
+			break
+		}
+	}
+	if bitsPerPixel == 0 {
+		return nil, fmt.Errorf("unsupported window depth %d", reply.Depth)
+	}
+	bytesPerPixel := bitsPerPixel / 8
+	if bytesPerPixel < 3 {
+		return nil, fmt.Errorf("unsupported pixel format %d bpp", bitsPerPixel)
+	}
+
+	if height == 0 {
+		return nil, fmt.Errorf("window pixels: invalid height")
+	}
+	stride := len(reply.Data) / height
+	if stride*height != len(reply.Data) {
+		return nil, fmt.Errorf("window pixels: unexpected stride")
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		row := reply.Data[y*stride : (y+1)*stride]
+		for x := 0; x < width; x++ {
+			off := x * bytesPerPixel
+			if off+3 > len(row) {
+				break
+			}
+			b := row[off]
+			g := row[off+1]
+			r := row[off+2]
+			a := byte(0xFF)
+			if bytesPerPixel >= 4 && off+3 < len(row) {
+				a = row[off+3]
+			}
+			pix := img.PixOffset(x, y)
+			img.Pix[pix+0] = r
+			img.Pix[pix+1] = g
+			img.Pix[pix+2] = b
+			img.Pix[pix+3] = a
+		}
+	}
+	return img, nil
 }
 
 func fetchMonitors(conn *xgb.Conn, root xproto.Window) ([]MonitorInfo, error) {
@@ -169,7 +224,6 @@ func fetchWindows(conn *xgb.Conn, root xproto.Window, monitors []MonitorInfo, ac
 	}
 	reply, err := xproto.GetProperty(conn, false, root, listAtom, xproto.AtomWindow, 0, 1<<16).Reply()
 	if err != nil || reply.Format != 32 || reply.ValueLen == 0 {
-		// Fallback to _NET_CLIENT_LIST if stacking not available.
 		listAtom, err = internAtom(conn, "_NET_CLIENT_LIST")
 		if err != nil {
 			return nil, err
@@ -351,270 +405,4 @@ func readExecutable(pid uint32) string {
 		}
 	}
 	return ""
-}
-
-// FindMonitor resolves a monitor selector against the provided list.
-func FindMonitor(monitors []MonitorInfo, selector string) (MonitorInfo, error) {
-	if len(monitors) == 0 {
-		return MonitorInfo{}, errNoMonitors
-	}
-	if selector == "" {
-		return monitors[0], nil
-	}
-	sel := strings.TrimSpace(selector)
-	lower := strings.ToLower(sel)
-	if lower == "primary" {
-		for _, mon := range monitors {
-			if mon.Primary {
-				return mon, nil
-			}
-		}
-		return monitors[0], nil
-	}
-	if strings.HasPrefix(lower, "#") {
-		lower = lower[1:]
-	}
-	if idx, err := strconv.Atoi(lower); err == nil {
-		if idx < 0 || idx >= len(monitors) {
-			return MonitorInfo{}, fmt.Errorf("monitor index %d out of range", idx)
-		}
-		return monitors[idx], nil
-	}
-	for _, mon := range monitors {
-		if strings.Contains(strings.ToLower(mon.Name), lower) {
-			return mon, nil
-		}
-	}
-	return MonitorInfo{}, fmt.Errorf("monitor %q not found", selector)
-}
-
-// SelectWindow matches a selector string against the list of windows.
-func SelectWindow(selector string, windows []WindowInfo) (WindowInfo, error) {
-	if len(windows) == 0 {
-		return WindowInfo{}, errNoWindows
-	}
-	sel := strings.TrimSpace(selector)
-	if sel == "" {
-		for _, win := range windows {
-			if win.Active {
-				return win, nil
-			}
-		}
-		return windows[len(windows)-1], nil
-	}
-	lower := strings.ToLower(sel)
-	if lower == "active" {
-		for _, win := range windows {
-			if win.Active {
-				return win, nil
-			}
-		}
-		return WindowInfo{}, fmt.Errorf("no active window detected")
-	}
-	if strings.HasPrefix(lower, "index:") {
-		val := strings.TrimSpace(lower[6:])
-		idx, err := strconv.Atoi(val)
-		if err != nil {
-			return WindowInfo{}, fmt.Errorf("invalid index %q", val)
-		}
-		if idx < 0 || idx >= len(windows) {
-			return WindowInfo{}, fmt.Errorf("window index %d out of range", idx)
-		}
-		return windows[idx], nil
-	}
-	if strings.HasPrefix(lower, "id:") {
-		val := strings.TrimSpace(lower[3:])
-		id, err := parseWindowID(val)
-		if err != nil {
-			return WindowInfo{}, err
-		}
-		for _, win := range windows {
-			if win.ID == id {
-				return win, nil
-			}
-		}
-		return WindowInfo{}, fmt.Errorf("window id 0x%x not found", id)
-	}
-	if strings.HasPrefix(lower, "pid:") {
-		val := strings.TrimSpace(lower[4:])
-		pid64, err := strconv.ParseUint(val, 10, 32)
-		if err != nil {
-			return WindowInfo{}, fmt.Errorf("invalid pid %q", val)
-		}
-		pid := uint32(pid64)
-		for _, win := range windows {
-			if win.PID == pid {
-				return win, nil
-			}
-		}
-		return WindowInfo{}, fmt.Errorf("window with pid %d not found", pid)
-	}
-	if strings.HasPrefix(lower, "exec:") {
-		needle := strings.TrimSpace(lower[5:])
-		for _, win := range windows {
-			if strings.Contains(strings.ToLower(win.Executable), needle) {
-				return win, nil
-			}
-		}
-		return WindowInfo{}, fmt.Errorf("window with exec %q not found", needle)
-	}
-	if strings.HasPrefix(lower, "class:") {
-		needle := strings.TrimSpace(lower[6:])
-		for _, win := range windows {
-			if strings.Contains(strings.ToLower(win.Class), needle) || strings.Contains(strings.ToLower(win.Instance), needle) {
-				return win, nil
-			}
-		}
-		return WindowInfo{}, fmt.Errorf("window with class %q not found", needle)
-	}
-	if strings.HasPrefix(lower, "title:") {
-		needle := strings.TrimSpace(sel[6:])
-		lowerNeedle := strings.ToLower(needle)
-		for _, win := range windows {
-			if strings.Contains(strings.ToLower(win.Title), lowerNeedle) {
-				return win, nil
-			}
-		}
-		return WindowInfo{}, fmt.Errorf("window with title %q not found", needle)
-	}
-	if strings.HasPrefix(lower, "name:") {
-		needle := strings.TrimSpace(sel[5:])
-		lowerNeedle := strings.ToLower(needle)
-		for _, win := range windows {
-			if strings.Contains(strings.ToLower(win.Title), lowerNeedle) {
-				return win, nil
-			}
-		}
-		return WindowInfo{}, fmt.Errorf("window with title %q not found", needle)
-	}
-	if idx, err := strconv.Atoi(sel); err == nil {
-		if idx < 0 || idx >= len(windows) {
-			return WindowInfo{}, fmt.Errorf("window index %d out of range", idx)
-		}
-		return windows[idx], nil
-	}
-	if strings.HasPrefix(lower, "0x") {
-		id, err := parseWindowID(sel)
-		if err == nil {
-			for _, win := range windows {
-				if win.ID == id {
-					return win, nil
-				}
-			}
-			return WindowInfo{}, fmt.Errorf("window id 0x%x not found", id)
-		}
-	}
-	needle := strings.ToLower(sel)
-	for _, win := range windows {
-		if strings.Contains(strings.ToLower(win.Title), needle) {
-			return win, nil
-		}
-		if strings.Contains(strings.ToLower(win.Executable), needle) {
-			return win, nil
-		}
-		if strings.Contains(strings.ToLower(win.Class), needle) {
-			return win, nil
-		}
-		if strings.Contains(strings.ToLower(win.Instance), needle) {
-			return win, nil
-		}
-	}
-	return WindowInfo{}, fmt.Errorf("no window matched %q", selector)
-}
-
-func parseWindowID(val string) (uint32, error) {
-	v := strings.TrimSpace(val)
-	if strings.HasPrefix(v, "0x") || strings.HasPrefix(v, "0X") {
-		parsed, err := strconv.ParseUint(v[2:], 16, 32)
-		if err != nil {
-			return 0, fmt.Errorf("invalid window id %q", val)
-		}
-		return uint32(parsed), nil
-	}
-	parsed, err := strconv.ParseUint(v, 10, 32)
-	if err != nil {
-		return 0, fmt.Errorf("invalid window id %q", val)
-	}
-	return uint32(parsed), nil
-}
-
-// captureWindowImage fetches the pixels for a given X11 window id. It returns an
-// error when the server cannot provide the window contents (for example if the
-// window is unmapped or lives on a different display server).
-func captureWindowImage(id uint32) (*image.RGBA, error) {
-	conn, err := xgb.NewConn()
-	if err != nil {
-		return nil, fmt.Errorf("connect X server: %w", err)
-	}
-	defer conn.Close()
-
-	geom, err := xproto.GetGeometry(conn, xproto.Drawable(id)).Reply()
-	if err != nil {
-		return nil, fmt.Errorf("window geometry: %w", err)
-	}
-	width := int(geom.Width)
-	height := int(geom.Height)
-	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("window has empty geometry")
-	}
-
-	setup := xproto.Setup(conn)
-	if setup == nil {
-		return nil, fmt.Errorf("xproto setup unavailable")
-	}
-
-	reply, err := xproto.GetImage(conn, xproto.ImageFormatZPixmap, xproto.Drawable(id), 0, 0, geom.Width, geom.Height, ^uint32(0)).Reply()
-	if err != nil {
-		return nil, fmt.Errorf("window pixels: %w", err)
-	}
-	if len(reply.Data) == 0 {
-		return nil, fmt.Errorf("window pixels: empty image data")
-	}
-
-	bitsPerPixel := 0
-	for _, format := range setup.PixmapFormats {
-		if format.Depth == reply.Depth {
-			bitsPerPixel = int(format.BitsPerPixel)
-			break
-		}
-	}
-	if bitsPerPixel == 0 {
-		return nil, fmt.Errorf("unsupported window depth %d", reply.Depth)
-	}
-	bytesPerPixel := bitsPerPixel / 8
-	if bytesPerPixel < 3 {
-		return nil, fmt.Errorf("unsupported pixel format %d bpp", bitsPerPixel)
-	}
-
-	if height == 0 {
-		return nil, fmt.Errorf("window pixels: invalid height")
-	}
-	stride := len(reply.Data) / height
-	if stride*height != len(reply.Data) {
-		return nil, fmt.Errorf("window pixels: unexpected stride")
-	}
-
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		row := reply.Data[y*stride : (y+1)*stride]
-		for x := 0; x < width; x++ {
-			off := x * bytesPerPixel
-			if off+3 > len(row) {
-				break
-			}
-			b := row[off]
-			g := row[off+1]
-			r := row[off+2]
-			a := byte(0xFF)
-			if bytesPerPixel >= 4 && off+3 < len(row) {
-				a = row[off+3]
-			}
-			pix := img.PixOffset(x, y)
-			img.Pix[pix+0] = r
-			img.Pix[pix+1] = g
-			img.Pix[pix+2] = b
-			img.Pix[pix+3] = a
-		}
-	}
-	return img, nil
 }
