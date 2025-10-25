@@ -1,4 +1,4 @@
-//go:build !(linux || freebsd || openbsd || netbsd || dragonfly) || !cgo
+//go:build !(linux || freebsd || openbsd || netbsd || dragonfly)
 
 package clipboard
 
