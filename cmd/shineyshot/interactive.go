@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,10 @@ type interactiveCmd struct {
 	output string
 	state  *appstate.AppState
 
+	stdin  io.Reader
+	stdout io.Writer
+	stderr io.Writer
+
 	colorIdx int
 	widthIdx int
 
@@ -36,6 +41,27 @@ type interactiveCmd struct {
 
 	defaultPaletteSet map[color.RGBA]struct{}
 	defaultWidthSet   map[int]struct{}
+
+	backgroundSession string
+	backgroundDir     string
+}
+
+func (i *interactiveCmd) withIO(in io.Reader, out, err io.Writer) func() {
+	prevIn, prevOut, prevErr := i.stdin, i.stdout, i.stderr
+	if in != nil {
+		i.stdin = in
+	}
+	if out != nil {
+		i.stdout = out
+	}
+	if err != nil {
+		i.stderr = err
+	}
+	return func() {
+		i.stdin = prevIn
+		i.stdout = prevOut
+		i.stderr = prevErr
+	}
 }
 
 func newInteractiveCmd(r *root) *interactiveCmd {
@@ -57,116 +83,139 @@ func newInteractiveCmd(r *root) *interactiveCmd {
 		widths:            widths,
 		defaultPaletteSet: paletteSet,
 		defaultWidthSet:   widthSet,
+		stdin:             os.Stdin,
+		stdout:            os.Stdout,
+		stderr:            os.Stderr,
 	}
 }
 
 func (i *interactiveCmd) Run() error {
-	fmt.Fprintln(os.Stdout, "Interactive mode. Type 'help' for commands.")
-	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Fprintln(i.stdout, "Interactive mode. Type 'help' for commands.")
+	scanner := bufio.NewScanner(i.stdin)
 	for {
-		fmt.Fprint(os.Stdout, "> ")
+		fmt.Fprint(i.stdout, "> ")
 		if !scanner.Scan() {
 			break
 		}
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+		done, err := i.executeLine(scanner.Text())
+		if err != nil {
+			return err
 		}
-		fields := strings.Fields(line)
-		cmd := strings.ToLower(fields[0])
-		args := fields[1:]
-
-		switch cmd {
-		case "quit", "exit":
+		if done {
 			return nil
-		case "help":
-			i.printHelp()
-		case "capture":
-			i.handleCapture(args)
-		case "windows":
-			i.printWindowList()
-		case "screens":
-			i.printScreenList()
-		case "arrow":
-			i.handleArrow(args)
-		case "line":
-			i.handleLine(args)
-		case "rect":
-			i.handleRect(args)
-		case "circle":
-			i.handleCircle(args)
-		case "crop":
-			i.handleCrop(args)
-		case "color":
-			i.handleColor(args)
-		case "colors":
-			i.handleColorList()
-		case "width":
-			i.handleWidth(args)
-		case "widths":
-			i.handleWidthList()
-		case "show":
-			i.handleShow(false)
-		case "preview":
-			i.handleShow(true)
-		case "save":
-			i.handleSave(args)
-		case "savetmp":
-			i.handleSaveTmp()
-		case "savepictures":
-			i.handleSavePictures()
-		case "savehome":
-			i.handleSaveHome()
-		case "copy":
-			i.handleCopy()
-		case "copyname":
-			i.handleCopyName()
-		default:
-			fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
 		}
 	}
 	return scanner.Err()
 }
 
+func (i *interactiveCmd) executeLine(line string) (bool, error) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return false, nil
+	}
+	fields := strings.Fields(line)
+	cmd := strings.ToLower(fields[0])
+	args := fields[1:]
+
+	switch cmd {
+	case "quit", "exit":
+		return true, nil
+	case "help":
+		i.printHelp()
+	case "capture":
+		i.handleCapture(args)
+	case "windows":
+		i.printWindowList()
+	case "screens":
+		i.printScreenList()
+	case "arrow":
+		i.handleArrow(args)
+	case "line":
+		i.handleLine(args)
+	case "rect":
+		i.handleRect(args)
+	case "circle":
+		i.handleCircle(args)
+	case "crop":
+		i.handleCrop(args)
+	case "color":
+		i.handleColor(args)
+	case "colors":
+		i.handleColorList()
+	case "width":
+		i.handleWidth(args)
+	case "widths":
+		i.handleWidthList()
+	case "show":
+		i.handleShow(false)
+	case "preview":
+		i.handleShow(true)
+	case "save":
+		i.handleSave(args)
+	case "savetmp":
+		i.handleSaveTmp()
+	case "savepictures":
+		i.handleSavePictures()
+	case "savehome":
+		i.handleSaveHome()
+	case "copy":
+		i.handleCopy()
+	case "copyname":
+		i.handleCopyName()
+	case "background":
+		i.handleBackground(args)
+	default:
+		fmt.Fprintf(i.stderr, "unknown command: %s\n", cmd)
+	}
+	return false, nil
+}
+
 func (i *interactiveCmd) printHelp() {
-	fmt.Fprintln(os.Stdout, "Commands:")
-	fmt.Fprintln(os.Stdout, "  capture screen [DISPLAY]   capture full screen; use 'screens' to list displays")
-	fmt.Fprintln(os.Stdout, "  capture window SELECTOR    capture window by selector; use 'windows' to list options")
-	fmt.Fprintln(os.Stdout, "  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays")
-	fmt.Fprintln(os.Stdout, "  arrow x0 y0 x1 y1          draw arrow with current stroke")
-	fmt.Fprintln(os.Stdout, "  line x0 y0 x1 y1           draw line with current stroke")
-	fmt.Fprintln(os.Stdout, "  rect x0 y0 x1 y1           draw rectangle with current stroke")
-	fmt.Fprintln(os.Stdout, "  circle x y r               draw circle with current stroke")
-	fmt.Fprintln(os.Stdout, "  crop x0 y0 x1 y1           crop image to rectangle")
-	fmt.Fprintln(os.Stdout, "  color [value|list]         set or list palette colors")
-	fmt.Fprintln(os.Stdout, "  colors                     list palette colors")
-	fmt.Fprintln(os.Stdout, "  width [value|list]         set or list stroke widths")
-	fmt.Fprintln(os.Stdout, "  widths                     list stroke widths")
-	fmt.Fprintln(os.Stdout, "  show                       open synced annotation window")
-	fmt.Fprintln(os.Stdout, "  preview                    open copy in separate window")
-	fmt.Fprintln(os.Stdout, "  save FILE                  save image to FILE")
-	fmt.Fprintln(os.Stdout, "  savetmp                    save to /tmp with a unique filename")
-	fmt.Fprintln(os.Stdout, "  savepictures               save to your Pictures directory")
-	fmt.Fprintln(os.Stdout, "  savehome                   save to your home directory")
-	fmt.Fprintln(os.Stdout, "  copy                       copy image to clipboard")
-	fmt.Fprintln(os.Stdout, "  windows                    list available windows and selectors")
-	fmt.Fprintln(os.Stdout, "  screens                    list available screens/displays")
-	fmt.Fprintln(os.Stdout, "  copyname                   copy last saved filename")
-	fmt.Fprintln(os.Stdout, "  quit                       exit interactive mode")
-	fmt.Fprintln(os.Stdout, "")
-	fmt.Fprintln(os.Stdout, "Window selectors:")
-	fmt.Fprintln(os.Stdout, "  index:<n>        window list index (see 'windows')")
-	fmt.Fprintln(os.Stdout, "  id:<hex|dec>     X11 window id")
-	fmt.Fprintln(os.Stdout, "  pid:<pid>        process id that owns the window")
-	fmt.Fprintln(os.Stdout, "  exec:<name>      executable name substring")
-	fmt.Fprintln(os.Stdout, "  class:<name>     X11 WM_CLASS substring")
-	fmt.Fprintln(os.Stdout, "  title:<text>     window title substring (useful for literal words like 'list')")
-	fmt.Fprintln(os.Stdout, "  <text>           fallback substring match on title/executable/class")
+	fmt.Fprintln(i.stdout, "Commands:")
+	fmt.Fprintln(i.stdout, "  capture screen [DISPLAY]   capture full screen; use 'screens' to list displays")
+	fmt.Fprintln(i.stdout, "  capture window SELECTOR    capture window by selector; use 'windows' to list options")
+	fmt.Fprintln(i.stdout, "  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays")
+	fmt.Fprintln(i.stdout, "  arrow x0 y0 x1 y1          draw arrow with current stroke")
+	fmt.Fprintln(i.stdout, "  line x0 y0 x1 y1           draw line with current stroke")
+	fmt.Fprintln(i.stdout, "  rect x0 y0 x1 y1           draw rectangle with current stroke")
+	fmt.Fprintln(i.stdout, "  circle x y r               draw circle with current stroke")
+	fmt.Fprintln(i.stdout, "  crop x0 y0 x1 y1           crop image to rectangle")
+	fmt.Fprintln(i.stdout, "  color [value|list]         set or list palette colors")
+	fmt.Fprintln(i.stdout, "  colors                     list palette colors")
+	fmt.Fprintln(i.stdout, "  width [value|list]         set or list stroke widths")
+	fmt.Fprintln(i.stdout, "  widths                     list stroke widths")
+	fmt.Fprintln(i.stdout, "  show                       open synced annotation window")
+	fmt.Fprintln(i.stdout, "  preview                    open copy in separate window")
+	fmt.Fprintln(i.stdout, "  save FILE                  save image to FILE")
+	fmt.Fprintln(i.stdout, "  savetmp                    save to /tmp with a unique filename")
+	fmt.Fprintln(i.stdout, "  savepictures               save to your Pictures directory")
+	fmt.Fprintln(i.stdout, "  savehome                   save to your home directory")
+	fmt.Fprintln(i.stdout, "  copy                       copy image to clipboard")
+	fmt.Fprintln(i.stdout, "  windows                    list available windows and selectors")
+	fmt.Fprintln(i.stdout, "  screens                    list available screens/displays")
+	fmt.Fprintln(i.stdout, "  copyname                   copy last saved filename")
+	fmt.Fprintln(i.stdout, "  background start [NAME] [DIR]   launch a background socket session")
+	fmt.Fprintln(i.stdout, "  background stop [NAME] [DIR]    stop a background socket session")
+	fmt.Fprintln(i.stdout, "  background list [DIR]           list background sessions")
+	fmt.Fprintln(i.stdout, "  background clean [DIR]          remove dead background sockets")
+	fmt.Fprintln(i.stdout,
+		"  background run [NAME] COMMAND [ARGS...]   "+
+			"run a socket command (e.g., 'background run capture screen')")
+	fmt.Fprintln(i.stdout, "  quit                       exit interactive mode")
+	fmt.Fprintln(i.stdout, "")
+	fmt.Fprintln(i.stdout, "Window selectors:")
+	fmt.Fprintln(i.stdout, "  index:<n>        window list index (see 'windows')")
+	fmt.Fprintln(i.stdout, "  id:<hex|dec>     X11 window id")
+	fmt.Fprintln(i.stdout, "  pid:<pid>        process id that owns the window")
+	fmt.Fprintln(i.stdout, "  exec:<name>      executable name substring")
+	fmt.Fprintln(i.stdout, "  class:<name>     X11 WM_CLASS substring")
+	fmt.Fprintln(i.stdout, "  title:<text>     window title substring (useful for literal words like 'list')")
+	fmt.Fprintln(i.stdout, "  <text>           fallback substring match on title/executable/class")
 }
 
 func (i *interactiveCmd) handleCapture(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: capture [screen|window|region] ...")
+		fmt.Fprintln(i.stderr, "usage: capture [screen|window|region] ...")
 		return
 	}
 	mode := strings.ToLower(args[0])
@@ -194,7 +243,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			}
 		}
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(i.stderr, err)
 			if len(params) == 0 || display != "" {
 				i.printScreenList()
 			}
@@ -219,7 +268,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		var info capture.WindowInfo
 		img, info, err = capture.CaptureWindowDetailed(selector)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(i.stderr, err)
 			i.printWindowList()
 			return
 		}
@@ -230,28 +279,28 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			return
 		}
 		if len(params) < 5 {
-			fmt.Fprintln(os.Stderr, "usage: capture region SCREEN X Y WIDTH HEIGHT")
+			fmt.Fprintln(i.stderr, "usage: capture region SCREEN X Y WIDTH HEIGHT")
 			i.printScreenList()
 			return
 		}
 		monitors, mErr := capture.ListMonitors()
 		if mErr != nil {
-			fmt.Fprintln(os.Stderr, mErr)
+			fmt.Fprintln(i.stderr, mErr)
 			return
 		}
 		monitor, mErr := capture.FindMonitor(monitors, params[0])
 		if mErr != nil {
-			fmt.Fprintln(os.Stderr, mErr)
+			fmt.Fprintln(i.stderr, mErr)
 			i.printScreenList()
 			return
 		}
 		coords, cErr := parseInts(params[1:], 4)
 		if cErr != nil {
-			fmt.Fprintln(os.Stderr, cErr)
+			fmt.Fprintln(i.stderr, cErr)
 			return
 		}
 		if coords[2] <= 0 || coords[3] <= 0 {
-			fmt.Fprintln(os.Stderr, "width and height must be positive")
+			fmt.Fprintln(i.stderr, "width and height must be positive")
 			return
 		}
 		rect := image.Rect(
@@ -265,25 +314,25 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			target = fmt.Sprintf("%s @ %dx%d+%d,%d", formatMonitorName(monitor), coords[2], coords[3], coords[0], coords[1])
 		}
 	default:
-		fmt.Fprintln(os.Stderr, "usage: capture [screen|window|region] ...")
+		fmt.Fprintln(i.stderr, "usage: capture [screen|window|region] ...")
 		return
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	i.setImage(img)
 	if target != "" {
-		fmt.Fprintf(os.Stdout, "captured %s %s\n", mode, target)
+		fmt.Fprintf(i.stdout, "captured %s %s\n", mode, target)
 	} else {
-		fmt.Fprintf(os.Stdout, "captured %s\n", mode)
+		fmt.Fprintf(i.stdout, "captured %s\n", mode)
 	}
 }
 
 func (i *interactiveCmd) handleArrow(args []string) {
 	vals, err := parseInts(args, 4)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	if err := i.withImage(true, func(img *image.RGBA) error {
@@ -291,16 +340,16 @@ func (i *interactiveCmd) handleArrow(args []string) {
 		appstate.DrawArrow(img, vals[0], vals[1], vals[2], vals[3], col, width)
 		return nil
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, "arrow drawn")
+	fmt.Fprintln(i.stdout, "arrow drawn")
 }
 
 func (i *interactiveCmd) handleLine(args []string) {
 	vals, err := parseInts(args, 4)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	if err := i.withImage(true, func(img *image.RGBA) error {
@@ -308,16 +357,16 @@ func (i *interactiveCmd) handleLine(args []string) {
 		appstate.DrawLine(img, vals[0], vals[1], vals[2], vals[3], col, width)
 		return nil
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, "line drawn")
+	fmt.Fprintln(i.stdout, "line drawn")
 }
 
 func (i *interactiveCmd) handleRect(args []string) {
 	vals, err := parseInts(args, 4)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	if err := i.withImage(true, func(img *image.RGBA) error {
@@ -325,16 +374,16 @@ func (i *interactiveCmd) handleRect(args []string) {
 		appstate.DrawRect(img, image.Rect(vals[0], vals[1], vals[2], vals[3]), col, width)
 		return nil
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, "rectangle drawn")
+	fmt.Fprintln(i.stdout, "rectangle drawn")
 }
 
 func (i *interactiveCmd) handleCircle(args []string) {
 	vals, err := parseInts(args, 3)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	if err := i.withImage(true, func(img *image.RGBA) error {
@@ -342,16 +391,16 @@ func (i *interactiveCmd) handleCircle(args []string) {
 		appstate.DrawCircle(img, vals[0], vals[1], vals[2], col, width)
 		return nil
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, "circle drawn")
+	fmt.Fprintln(i.stdout, "circle drawn")
 }
 
 func (i *interactiveCmd) handleCrop(args []string) {
 	vals, err := parseInts(args, 4)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	if err := i.withImage(true, func(img *image.RGBA) error {
@@ -359,10 +408,10 @@ func (i *interactiveCmd) handleCrop(args []string) {
 		*img = *cropped
 		return nil
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, "cropped")
+	fmt.Fprintln(i.stdout, "cropped")
 }
 
 func (i *interactiveCmd) handleColor(args []string) {
@@ -374,7 +423,7 @@ func (i *interactiveCmd) handleColor(args []string) {
 	arg := args[0]
 	if idx, err := strconv.Atoi(arg); err == nil {
 		if idx < 0 || idx >= len(i.palette) {
-			fmt.Fprintf(os.Stderr, "color index must be between 0 and %d\n", len(i.palette)-1)
+			fmt.Fprintf(i.stderr, "color index must be between 0 and %d\n", len(i.palette)-1)
 			return
 		}
 		i.applyColorIndex(idx)
@@ -388,7 +437,7 @@ func (i *interactiveCmd) handleColor(args []string) {
 	}
 	col, err := parseHexColor(arg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid color %q\n", arg)
+		fmt.Fprintf(i.stderr, "invalid color %q\n", arg)
 		return
 	}
 	idx := appstate.EnsurePaletteColor(col, "")
@@ -409,7 +458,7 @@ func (i *interactiveCmd) handleWidth(args []string) {
 	}
 	val, err := strconv.Atoi(args[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid width %q\n", args[0])
+		fmt.Fprintf(i.stderr, "invalid width %q\n", args[0])
 		return
 	}
 	idx := appstate.EnsureWidth(val)
@@ -442,7 +491,7 @@ func (i *interactiveCmd) printColorList() {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	if len(i.palette) == 0 {
-		fmt.Fprintln(os.Stdout, "no colors available")
+		fmt.Fprintln(i.stdout, "no colors available")
 		return
 	}
 	current := clampIndex(i.colorIdx, len(i.palette))
@@ -461,7 +510,7 @@ func (i *interactiveCmd) printColorList() {
 		if _, ok := i.defaultPaletteSet[entry.Color]; !ok {
 			suffix = " (custom)"
 		}
-		fmt.Fprintf(os.Stdout, "%s %2d: %-12s %s %s%s\n", marker, idx, name, hex, block, suffix)
+		fmt.Fprintf(i.stdout, "%s %2d: %-12s %s %s%s\n", marker, idx, name, hex, block, suffix)
 	}
 }
 
@@ -469,7 +518,7 @@ func (i *interactiveCmd) printWidthList() {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	if len(i.widths) == 0 {
-		fmt.Fprintln(os.Stdout, "no widths available")
+		fmt.Fprintln(i.stdout, "no widths available")
 		return
 	}
 	current := clampIndex(i.widthIdx, len(i.widths))
@@ -482,28 +531,28 @@ func (i *interactiveCmd) printWidthList() {
 		if _, ok := i.defaultWidthSet[w]; !ok {
 			suffix = " (custom)"
 		}
-		fmt.Fprintf(os.Stdout, "%s %3dpx%s\n", marker, w, suffix)
+		fmt.Fprintf(i.stdout, "%s %3dpx%s\n", marker, w, suffix)
 	}
 }
 
 func (i *interactiveCmd) printScreenList() {
 	monitors, err := capture.ListMonitors()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	if len(monitors) == 0 {
-		fmt.Fprintln(os.Stdout, "no screens available")
+		fmt.Fprintln(i.stdout, "no screens available")
 		return
 	}
-	fmt.Fprintln(os.Stdout, "available screens:")
+	fmt.Fprintln(i.stdout, "available screens:")
 	for _, mon := range monitors {
 		primary := ""
 		if mon.Primary {
 			primary = " [primary]"
 		}
 		rect := mon.Rect
-		fmt.Fprintf(os.Stdout, "  %s -> %dx%d+%d,%d%s\n", formatMonitorName(mon), rect.Dx(), rect.Dy(), rect.Min.X, rect.Min.Y, primary)
+		fmt.Fprintf(i.stdout, "  %s -> %dx%d+%d,%d%s\n", formatMonitorName(mon), rect.Dx(), rect.Dy(), rect.Min.X, rect.Min.Y, primary)
 	}
 }
 
@@ -517,22 +566,22 @@ func formatMonitorName(mon capture.MonitorInfo) string {
 func (i *interactiveCmd) printWindowList() {
 	windows, err := capture.ListWindows()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	if len(windows) == 0 {
-		fmt.Fprintln(os.Stdout, "no windows available")
+		fmt.Fprintln(i.stdout, "no windows available")
 		return
 	}
-	fmt.Fprintln(os.Stdout, "available windows (* marks the active window):")
+	fmt.Fprintln(i.stdout, "available windows (* marks the active window):")
 	for _, win := range windows {
 		marker := " "
 		if win.Active {
 			marker = "*"
 		}
-		fmt.Fprintf(os.Stdout, "%s %s\n", marker, formatWindowLabel(win))
+		fmt.Fprintf(i.stdout, "%s %s\n", marker, formatWindowLabel(win))
 	}
-	fmt.Fprintln(os.Stdout, "selectors: index:<n>, id:<hex>, pid:<pid>, exec:<name>, class:<name>, title:<text>, substring match")
+	fmt.Fprintln(i.stdout, "selectors: index:<n>, id:<hex>, pid:<pid>, exec:<name>, class:<name>, title:<text>, substring match")
 }
 
 func formatWindowLabel(info capture.WindowInfo) string {
@@ -565,7 +614,7 @@ func (i *interactiveCmd) applyColorIndex(idx int) {
 	if state != nil {
 		state.ApplySettings(colorIdx, widthIdx)
 	}
-	fmt.Fprintln(os.Stdout, msg)
+	fmt.Fprintln(i.stdout, msg)
 	i.printColorList()
 }
 
@@ -580,7 +629,7 @@ func (i *interactiveCmd) applyWidthIndex(idx int) {
 	if state != nil {
 		state.ApplySettings(colorIdx, widthIdx)
 	}
-	fmt.Fprintf(os.Stdout, "width set to %dpx\n", width)
+	fmt.Fprintf(i.stdout, "width set to %dpx\n", width)
 	i.printWidthList()
 }
 
@@ -588,7 +637,7 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 	i.mu.Lock()
 	if i.img == nil {
 		i.mu.Unlock()
-		fmt.Fprintln(os.Stderr, "no image loaded")
+		fmt.Fprintln(i.stderr, "no image loaded")
 		return
 	}
 	if copyImage {
@@ -605,12 +654,12 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 			appstate.WithWidthIndex(widthIdx),
 		)
 		go st.Run()
-		fmt.Fprintln(os.Stdout, "preview window opened")
+		fmt.Fprintln(i.stdout, "preview window opened")
 		return
 	}
 	if i.state != nil {
 		i.mu.Unlock()
-		fmt.Fprintln(os.Stderr, "annotation window already open")
+		fmt.Fprintln(i.stderr, "annotation window already open")
 		return
 	}
 	img := i.img
@@ -643,21 +692,21 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 	i.r.state = st
 	i.mu.Unlock()
 	go st.Run()
-	fmt.Fprintln(os.Stdout, "annotation window opened")
+	fmt.Fprintln(i.stdout, "annotation window opened")
 }
 
 func (i *interactiveCmd) handleSave(args []string) {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: save FILE")
+		fmt.Fprintln(i.stderr, "usage: save FILE")
 		return
 	}
 	path := args[0]
 	if path == "" {
-		fmt.Fprintln(os.Stderr, "path must not be empty")
+		fmt.Fprintln(i.stderr, "path must not be empty")
 		return
 	}
 	if err := i.saveToPath(path); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	i.finalizeSave(path)
@@ -666,7 +715,7 @@ func (i *interactiveCmd) handleSave(args []string) {
 func (i *interactiveCmd) handleSaveTmp() {
 	path, err := i.saveToTmp()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	i.finalizeSave(path)
@@ -675,12 +724,12 @@ func (i *interactiveCmd) handleSaveTmp() {
 func (i *interactiveCmd) handleSavePictures() {
 	dir, err := picturesDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	path, err := i.saveAuto(dir, "shineyshot")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	i.finalizeSave(path)
@@ -689,12 +738,12 @@ func (i *interactiveCmd) handleSavePictures() {
 func (i *interactiveCmd) handleSaveHome() {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	path, err := i.saveAuto(home, "shineyshot")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
 	i.finalizeSave(path)
@@ -710,10 +759,10 @@ func (i *interactiveCmd) handleCopy() {
 		cmd.Stdin = &buf
 		return cmd.Run()
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, "image copied to clipboard")
+	fmt.Fprintln(i.stdout, "image copied to clipboard")
 }
 
 func (i *interactiveCmd) handleCopyName() {
@@ -721,16 +770,175 @@ func (i *interactiveCmd) handleCopyName() {
 	output := i.output
 	i.mu.RUnlock()
 	if output == "" {
-		fmt.Fprintln(os.Stderr, "no saved file")
+		fmt.Fprintln(i.stderr, "no saved file")
 		return
 	}
 	cmd := exec.Command("wl-copy")
 	cmd.Stdin = strings.NewReader(output)
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(i.stderr, err)
 		return
 	}
-	fmt.Fprintln(os.Stdout, "filename copied to clipboard")
+	fmt.Fprintln(i.stdout, "filename copied to clipboard")
+}
+
+func (i *interactiveCmd) handleBackground(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(i.stderr, "usage: background [start|stop|list|clean|run] ...")
+		return
+	}
+	action := strings.ToLower(args[0])
+	switch action {
+	case "start":
+		name := ""
+		dirArg := ""
+		if len(args) > 1 {
+			name = args[1]
+		}
+		if len(args) > 2 {
+			dirArg = strings.Join(args[2:], " ")
+		}
+		if i.backgroundSession != "" {
+			fmt.Fprintf(i.stderr, "background session %s is already tracked; stop it before starting another\n", i.backgroundSession)
+			return
+		}
+		sessionName, dir, err := i.startBackgroundSession(name, dirArg)
+		if err != nil {
+			fmt.Fprintln(i.stderr, err)
+			return
+		}
+		i.backgroundSession = sessionName
+		i.backgroundDir = dir
+		fmt.Fprintf(i.stdout, "background session %s ready at %s\n", sessionName, socketPath(dir, sessionName))
+	case "stop":
+		name := ""
+		dirArg := ""
+		if len(args) > 1 {
+			name = args[1]
+		}
+		if len(args) > 2 {
+			dirArg = strings.Join(args[2:], " ")
+		}
+		if name == "" {
+			name = i.backgroundSession
+		}
+		if dirArg == "" {
+			dirArg = i.backgroundDir
+		}
+		if name == "" {
+			fmt.Fprintln(i.stderr, "usage: background stop [NAME] [DIR]")
+			return
+		}
+		if err := i.stopBackgroundSession(name, dirArg); err != nil {
+			fmt.Fprintln(i.stderr, err)
+			return
+		}
+		if name == i.backgroundSession && (dirArg == "" || dirArg == i.backgroundDir) {
+			i.backgroundSession = ""
+			i.backgroundDir = ""
+		}
+		fmt.Fprintf(i.stdout, "background session %s stop requested\n", name)
+	case "list":
+		dirArg := ""
+		if len(args) > 1 {
+			dirArg = strings.Join(args[1:], " ")
+		}
+		if err := i.listBackgroundSessions(dirArg); err != nil {
+			fmt.Fprintln(i.stderr, err)
+		}
+	case "clean":
+		dirArg := ""
+		if len(args) > 1 {
+			dirArg = strings.Join(args[1:], " ")
+		}
+		dir, err := resolveSocketDir(dirArg)
+		if err != nil {
+			fmt.Fprintln(i.stderr, err)
+			return
+		}
+		if err := cleanSocketDir(dir, i.stdout); err != nil {
+			fmt.Fprintln(i.stderr, err)
+			return
+		}
+		if i.backgroundSession != "" {
+			statuses, statErr := collectSocketStatuses(dir)
+			if statErr == nil {
+				tracked := false
+				for _, st := range statuses {
+					if st.name == i.backgroundSession && st.err == nil {
+						tracked = true
+						break
+					}
+				}
+				if !tracked {
+					i.backgroundSession = ""
+					i.backgroundDir = ""
+				}
+			}
+		}
+	case "run":
+		if len(args) < 2 && i.backgroundSession == "" {
+			fmt.Fprintln(i.stderr, "usage: background run [NAME] COMMAND [ARGS...]")
+			return
+		}
+		dirArg := i.backgroundDir
+		tokens := args[1:]
+		if len(tokens) > 0 && strings.HasPrefix(tokens[0], "dir=") {
+			dirArg = strings.TrimPrefix(tokens[0], "dir=")
+			tokens = tokens[1:]
+		}
+		dir, err := resolveSocketDir(dirArg)
+		if err != nil {
+			fmt.Fprintln(i.stderr, err)
+			return
+		}
+		if len(tokens) == 0 {
+			fmt.Fprintln(i.stderr, "usage: background run [NAME] COMMAND [ARGS...]")
+			return
+		}
+		resolvedName, commandArgs, err := resolveRunTarget(dir, i.backgroundSession, tokens)
+		if err != nil {
+			fmt.Fprintln(i.stderr, err)
+			return
+		}
+		command := strings.Join(commandArgs, " ")
+		if err := runSocketCommands(dir, resolvedName, []string{command}, i.stdout, i.stderr); err != nil {
+			fmt.Fprintln(i.stderr, err)
+			return
+		}
+		i.backgroundSession = resolvedName
+		i.backgroundDir = dir
+	default:
+		fmt.Fprintf(i.stderr, "unknown background action: %s\n", action)
+	}
+}
+
+func (i *interactiveCmd) startBackgroundSession(name, dirArg string) (string, string, error) {
+	dir, err := resolveSocketDir(dirArg)
+	if err != nil {
+		return "", "", err
+	}
+	session, err := startBackgroundServer(dir, name, i.r)
+	if err != nil {
+		return "", "", err
+	}
+	return session, dir, nil
+}
+
+func (i *interactiveCmd) stopBackgroundSession(name, dirArg string) error {
+	dir, err := resolveSocketDir(dirArg)
+	if err != nil {
+		return err
+	}
+	return stopSocket(dir, name)
+}
+
+func (i *interactiveCmd) listBackgroundSessions(dirArg string) error {
+	dir, err := resolveSocketDir(dirArg)
+	if err != nil {
+		return err
+	}
+	return printSocketList(dir, i.stdout)
 }
 
 func (i *interactiveCmd) withImage(write bool, fn func(img *image.RGBA) error) error {
@@ -892,7 +1100,7 @@ func (i *interactiveCmd) finalizeSave(path string) {
 	i.mu.Lock()
 	i.output = path
 	i.mu.Unlock()
-	fmt.Fprintf(os.Stdout, "saved %s\n", path)
+	fmt.Fprintf(i.stdout, "saved %s\n", path)
 }
 
 func parseInts(args []string, count int) ([]int, error) {

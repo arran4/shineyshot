@@ -6,4 +6,5 @@ Commands:
   snapshot
   draw
   interactive
+  background
   version

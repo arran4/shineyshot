@@ -1,5 +1,8 @@
 Usage: {{.Program}} interactive
-Starts an interactive shell. Available commands:
+Starts an interactive shell. Use immediate mode for scripts, e.g.:
+  {{.Program}} interactive -e "capture screen" -e "savetmp"
+
+Available commands:
   capture screen [DISPLAY]   capture a full screen screenshot ('screens' shows displays)
   capture window SELECTOR    capture a window by selector ('windows' shows selectors)
   capture region SCREEN X Y WIDTH HEIGHT   capture a region relative to a screen ('screens' shows displays)
@@ -22,6 +25,11 @@ Starts an interactive shell. Available commands:
   windows                    list available windows and selector hints
   screens                    list available screens/displays
   copyname                   copy the last saved filename
+  background start [NAME] [DIR]   launch a background socket session
+  background stop [NAME] [DIR]    stop a background socket session
+  background list [DIR]           list background sessions
+  background clean [DIR]          remove dead background sockets
+  background run [NAME] COMMAND [ARGS...]   run a socket command (e.g., '{{.Program}} background run capture screen')
   quit                       exit interactive mode
 
 Window selectors:
