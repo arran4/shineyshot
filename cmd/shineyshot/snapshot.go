@@ -26,7 +26,7 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 }
 
 func (s *snapshotCmd) Run() error {
-	img, err := capture.CaptureScreenshot()
+	img, err := capture.CaptureScreenshot("")
 	if err != nil {
 		return err
 	}

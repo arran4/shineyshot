@@ -30,8 +30,19 @@ import (
 
 // AppState holds application configuration for the UI.
 type AppState struct {
-	Image  *image.RGBA
-	Output string
+	Image    *image.RGBA
+	Output   string
+	ColorIdx int
+	WidthIdx int
+
+	updateCh    chan struct{}
+	sendControl func(controlEvent)
+
+	settingsMu sync.Mutex
+	settingsFn func(colorIdx, widthIdx int)
+
+	onClose   func()
+	closeOnce sync.Once
 }
 
 // Option modifies an AppState during creation.
@@ -43,13 +54,127 @@ func WithImage(img *image.RGBA) Option { return func(a *AppState) { a.Image = im
 // WithOutput sets the output file path used when saving annotations.
 func WithOutput(out string) Option { return func(a *AppState) { a.Output = out } }
 
+// WithColorIndex sets the initial palette index for drawing tools.
+func WithColorIndex(idx int) Option { return func(a *AppState) { a.ColorIdx = idx } }
+
+// WithWidthIndex sets the initial stroke width index for drawing tools.
+func WithWidthIndex(idx int) Option { return func(a *AppState) { a.WidthIdx = idx } }
+
+// WithSettingsListener registers a callback for when drawing settings change.
+func WithSettingsListener(fn func(colorIdx, widthIdx int)) Option {
+	return func(a *AppState) { a.settingsFn = fn }
+}
+
+// WithOnClose registers a callback invoked when the window closes.
+func WithOnClose(fn func()) Option { return func(a *AppState) { a.onClose = fn } }
+
 // New creates an AppState with the provided options.
 func New(opts ...Option) *AppState {
-	a := &AppState{}
+	a := &AppState{
+		ColorIdx: defaultColorIndex,
+		WidthIdx: defaultWidthIndex,
+		updateCh: make(chan struct{}, 1),
+	}
 	for _, o := range opts {
 		o(a)
 	}
+	a.ColorIdx = clampColorIndex(a.ColorIdx)
+	a.WidthIdx = clampWidthIndex(a.WidthIdx)
 	return a
+}
+
+type controlEvent struct {
+	ColorIdx *int
+	WidthIdx *int
+}
+
+func clampColorIndex(idx int) int {
+	if len(palette) == 0 {
+		return 0
+	}
+	if idx < 0 {
+		return 0
+	}
+	if idx >= len(palette) {
+		return len(palette) - 1
+	}
+	return idx
+}
+
+func clampWidthIndex(idx int) int {
+	if len(widths) == 0 {
+		return 0
+	}
+	if idx < 0 {
+		return 0
+	}
+	if idx >= len(widths) {
+		return len(widths) - 1
+	}
+	return idx
+}
+
+// NotifyImageChanged requests a repaint of the UI when the image mutates.
+func (a *AppState) NotifyImageChanged() {
+	if a.updateCh == nil {
+		return
+	}
+	select {
+	case a.updateCh <- struct{}{}:
+	default:
+	}
+}
+
+// ApplySettings synchronizes drawing settings between the CLI and UI.
+func (a *AppState) ApplySettings(colorIdx, widthIdx int) {
+	colorIdx = clampColorIndex(colorIdx)
+	widthIdx = clampWidthIndex(widthIdx)
+
+	a.settingsMu.Lock()
+	a.ColorIdx = colorIdx
+	a.WidthIdx = widthIdx
+	fn := a.settingsFn
+	sender := a.sendControl
+	a.settingsMu.Unlock()
+
+	if sender != nil {
+		ci := colorIdx
+		wi := widthIdx
+		sender(controlEvent{ColorIdx: &ci, WidthIdx: &wi})
+	}
+	if fn != nil {
+		fn(colorIdx, widthIdx)
+	}
+}
+
+func (a *AppState) applySettingsFromUI(colorIdx, widthIdx int) {
+	colorIdx = clampColorIndex(colorIdx)
+	widthIdx = clampWidthIndex(widthIdx)
+
+	a.settingsMu.Lock()
+	a.ColorIdx = colorIdx
+	a.WidthIdx = widthIdx
+	fn := a.settingsFn
+	a.settingsMu.Unlock()
+
+	if fn != nil {
+		fn(colorIdx, widthIdx)
+	}
+}
+
+func (a *AppState) setControlSender(fn func(controlEvent)) {
+	a.settingsMu.Lock()
+	a.sendControl = fn
+	a.settingsMu.Unlock()
+}
+
+func (a *AppState) notifyClose() {
+	a.closeOnce.Do(func() {
+		a.setControlSender(nil)
+		if a.onClose != nil {
+			a.onClose()
+		}
+	})
 }
 
 // Run executes the UI loop using shiny's driver.
@@ -58,6 +183,8 @@ func (a *AppState) Run() { driver.Main(a.Main) }
 func (a *AppState) Main(s screen.Screen) {
 	rgba := a.Image
 	output := a.Output
+	colorIdx := clampColorIndex(a.ColorIdx)
+	widthIdx := clampWidthIndex(a.WidthIdx)
 
 	// Ensure the toolbar is wide enough to fit the program title and all
 	// tool button labels so the UI contents are not clipped on start up.
@@ -82,7 +209,26 @@ func (a *AppState) Main(s screen.Screen) {
 	}
 	defer w.Release()
 
-	tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2}}
+	defer a.notifyClose()
+
+	if a.updateCh != nil {
+		done := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-a.updateCh:
+					w.Send(paint.Event{})
+				case <-done:
+					return
+				}
+			}
+		}()
+		defer close(done)
+	}
+
+	a.setControlSender(func(ev controlEvent) { w.Send(ev) })
+
+	tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: widthIdx}}
 	current := 0
 
 	var active actionType
@@ -100,7 +246,6 @@ func (a *AppState) Main(s screen.Screen) {
 	var textInput string
 	var textPos image.Point
 	tool := ToolMove
-	colorIdx := 2 // red
 	numberIdx := 0
 	var paintMu sync.Mutex
 	var paintCancel context.CancelFunc
@@ -127,6 +272,7 @@ func (a *AppState) Main(s screen.Screen) {
 
 	col := palette[colorIdx]
 	tabs[current].Zoom = fitZoom(rgba, width, height)
+	a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 
 	toolButtons = []*CacheButton{
 		{Button: &ToolButton{label: "M:Move", tool: ToolMove, atype: actionMove}},
@@ -169,12 +315,12 @@ func (a *AppState) Main(s screen.Screen) {
 	}
 
 	register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
-		img, err := capture.CaptureScreenshot()
+		img, err := capture.CaptureScreenshot("")
 		if err != nil {
 			log.Printf("capture screenshot: %v", err)
 			return
 		}
-		tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
+		tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
 		current = len(tabs) - 1
 		tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
 		message = "captured screenshot"
@@ -202,7 +348,7 @@ func (a *AppState) Main(s screen.Screen) {
 		}
 		rgba := image.NewRGBA(img.Bounds())
 		draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-		tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: 2})
+		tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
 		current = len(tabs) - 1
 		message = "pasted new tab"
 		log.Print(message)
@@ -287,6 +433,16 @@ func (a *AppState) Main(s screen.Screen) {
 	for {
 		e := w.NextEvent()
 		switch e := e.(type) {
+		case controlEvent:
+			if e.ColorIdx != nil {
+				colorIdx = clampColorIndex(*e.ColorIdx)
+				col = palette[colorIdx]
+			}
+			if e.WidthIdx != nil {
+				tabs[current].WidthIdx = clampWidthIndex(*e.WidthIdx)
+			}
+			a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
+			w.Send(paint.Event{})
 		case lifecycle.Event:
 			if e.To == lifecycle.StageDead {
 				paintMu.Lock()
@@ -365,6 +521,7 @@ func (a *AppState) Main(s screen.Screen) {
 						hoverTab = i
 						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
 							current = i
+							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 							w.Send(paint.Event{})
 						}
 						break
@@ -403,6 +560,7 @@ func (a *AppState) Main(s screen.Screen) {
 						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
 							colorIdx = cidx
 							col = palette[colorIdx]
+							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 						}
 						hoverPalette = cidx
 						if e.Direction == mouse.DirNone {
@@ -421,6 +579,7 @@ func (a *AppState) Main(s screen.Screen) {
 					if widx >= 0 && widx < len(widths) {
 						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
 							tabs[current].WidthIdx = widx
+							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 						}
 						hoverWidth = widx
 						if e.Direction == mouse.DirNone {

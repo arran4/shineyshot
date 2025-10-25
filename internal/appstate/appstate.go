@@ -45,6 +45,11 @@ const (
 	ToolText
 )
 
+const (
+	defaultColorIndex = 2
+	defaultWidthIndex = 2
+)
+
 type Tab struct {
 	Image *image.RGBA
 	Title string
@@ -174,6 +179,26 @@ func drawBackdrop(dst *image.RGBA) {
 
 var widths = []int{1, 2, 4, 6, 8}
 var numberSizes = []int{8, 12, 16, 20, 24}
+
+// DefaultColorIndex returns the default palette index used for drawing tools.
+func DefaultColorIndex() int { return defaultColorIndex }
+
+// DefaultWidthIndex returns the default stroke width index used for drawing tools.
+func DefaultWidthIndex() int { return defaultWidthIndex }
+
+// Palette returns a copy of the available drawing colors.
+func Palette() []color.RGBA {
+	out := make([]color.RGBA, len(palette))
+	copy(out, palette)
+	return out
+}
+
+// WidthOptions returns a copy of the available stroke widths.
+func WidthOptions() []int {
+	out := make([]int, len(widths))
+	copy(out, widths)
+	return out
+}
 
 // KeyShortcut describes a keyboard combination that triggers an action.
 type KeyShortcut struct {

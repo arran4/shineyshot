@@ -11,7 +11,8 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func CaptureScreenshot() (*image.RGBA, error) {
+func CaptureScreenshot(display string) (*image.RGBA, error) {
+	_ = display
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return nil, fmt.Errorf("dbus connect: %w", err)
@@ -67,7 +68,8 @@ func CaptureScreenshot() (*image.RGBA, error) {
 }
 
 // CaptureWindow captures a single window. Currently not implemented.
-func CaptureWindow() (*image.RGBA, error) {
+func CaptureWindow(windowID string) (*image.RGBA, error) {
+	_ = windowID
 	return nil, fmt.Errorf("capture window not implemented")
 }
 

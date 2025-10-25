@@ -44,13 +44,13 @@ func (a *annotateCmd) Run() error {
 	switch a.mode {
 	case "capture-screen":
 		var err error
-		img, err = capture.CaptureScreenshot()
+		img, err = capture.CaptureScreenshot("")
 		if err != nil {
 			return err
 		}
 	case "capture-window":
 		var err error
-		img, err = capture.CaptureWindow()
+		img, err = capture.CaptureWindow("")
 		if err != nil {
 			return err
 		}

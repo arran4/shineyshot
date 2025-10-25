@@ -1,15 +1,18 @@
 Usage: {{.Program}} interactive
 Starts an interactive shell. Available commands:
-  capture screen            capture a full screen screenshot
-  capture window            capture the active window
-  capture region            capture a region of the screen
-  arrow x0 y0 x1 y1         draw an arrow on the image
-  line x0 y0 x1 y1          draw a line on the image
-  rect x0 y0 x1 y1          draw a rectangle on the image
-  circle x y r              draw a circle on the image
-  crop x0 y0 x1 y1          crop the current image
-  show                      preview the image in a window
-  save FILE                 save the image to FILE
-  copy                      copy the image to the clipboard
-  copyname                  copy the last saved filename
-  quit                      exit interactive mode
+  capture screen DISPLAY     capture a full screen screenshot on DISPLAY
+  capture window WINDOW      capture WINDOW by identifier
+  capture region             capture a region of the screen
+  arrow x0 y0 x1 y1          draw an arrow with the current stroke
+  line x0 y0 x1 y1           draw a line with the current stroke
+  rect x0 y0 x1 y1           draw a rectangle with the current stroke
+  circle x y r               draw a circle with the current stroke
+  crop x0 y0 x1 y1           crop the current image
+  color [index|list]         change or list palette colors
+  width [value|list]         change or list stroke widths
+  show                       open a synced annotation window
+  preview                    open a detached copy in a window
+  save FILE                  save the image to FILE
+  copy                       copy the image to the clipboard
+  copyname                   copy the last saved filename
+  quit                       exit interactive mode
