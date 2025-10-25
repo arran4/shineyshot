@@ -40,3 +40,7 @@ The `draw` subcommand currently only supports straight lines. Support for
 arrows, numbered markers, and other shapes may be added in the future.
 
 The `snapshot` command will gain options for capturing windows and regions in future versions.
+
+## License
+
+ShineyShot is licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE) for details.
