@@ -467,6 +467,26 @@ func SelectWindow(selector string, windows []WindowInfo) (WindowInfo, error) {
 		}
 		return WindowInfo{}, fmt.Errorf("window with class %q not found", needle)
 	}
+	if strings.HasPrefix(lower, "title:") {
+		needle := strings.TrimSpace(sel[6:])
+		lowerNeedle := strings.ToLower(needle)
+		for _, win := range windows {
+			if strings.Contains(strings.ToLower(win.Title), lowerNeedle) {
+				return win, nil
+			}
+		}
+		return WindowInfo{}, fmt.Errorf("window with title %q not found", needle)
+	}
+	if strings.HasPrefix(lower, "name:") {
+		needle := strings.TrimSpace(sel[5:])
+		lowerNeedle := strings.ToLower(needle)
+		for _, win := range windows {
+			if strings.Contains(strings.ToLower(win.Title), lowerNeedle) {
+				return win, nil
+			}
+		}
+		return WindowInfo{}, fmt.Errorf("window with title %q not found", needle)
+	}
 	if idx, err := strconv.Atoi(sel); err == nil {
 		if idx < 0 || idx >= len(windows) {
 			return WindowInfo{}, fmt.Errorf("window index %d out of range", idx)
@@ -516,4 +536,85 @@ func parseWindowID(val string) (uint32, error) {
 		return 0, fmt.Errorf("invalid window id %q", val)
 	}
 	return uint32(parsed), nil
+}
+
+// captureWindowImage fetches the pixels for a given X11 window id. It returns an
+// error when the server cannot provide the window contents (for example if the
+// window is unmapped or lives on a different display server).
+func captureWindowImage(id uint32) (*image.RGBA, error) {
+	conn, err := xgb.NewConn()
+	if err != nil {
+		return nil, fmt.Errorf("connect X server: %w", err)
+	}
+	defer conn.Close()
+
+	geom, err := xproto.GetGeometry(conn, xproto.Drawable(id)).Reply()
+	if err != nil {
+		return nil, fmt.Errorf("window geometry: %w", err)
+	}
+	width := int(geom.Width)
+	height := int(geom.Height)
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("window has empty geometry")
+	}
+
+	setup := xproto.Setup(conn)
+	if setup == nil {
+		return nil, fmt.Errorf("xproto setup unavailable")
+	}
+
+	reply, err := xproto.GetImage(conn, xproto.ImageFormatZPixmap, xproto.Drawable(id), 0, 0, geom.Width, geom.Height, ^uint32(0)).Reply()
+	if err != nil {
+		return nil, fmt.Errorf("window pixels: %w", err)
+	}
+	if len(reply.Data) == 0 {
+		return nil, fmt.Errorf("window pixels: empty image data")
+	}
+
+	bitsPerPixel := 0
+	for _, format := range setup.PixmapFormats {
+		if format.Depth == reply.Depth {
+			bitsPerPixel = int(format.BitsPerPixel)
+			break
+		}
+	}
+	if bitsPerPixel == 0 {
+		return nil, fmt.Errorf("unsupported window depth %d", reply.Depth)
+	}
+	bytesPerPixel := bitsPerPixel / 8
+	if bytesPerPixel < 3 {
+		return nil, fmt.Errorf("unsupported pixel format %d bpp", bitsPerPixel)
+	}
+
+	if height == 0 {
+		return nil, fmt.Errorf("window pixels: invalid height")
+	}
+	stride := len(reply.Data) / height
+	if stride*height != len(reply.Data) {
+		return nil, fmt.Errorf("window pixels: unexpected stride")
+	}
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		row := reply.Data[y*stride : (y+1)*stride]
+		for x := 0; x < width; x++ {
+			off := x * bytesPerPixel
+			if off+3 > len(row) {
+				break
+			}
+			b := row[off]
+			g := row[off+1]
+			r := row[off+2]
+			a := byte(0xFF)
+			if bytesPerPixel >= 4 && off+3 < len(row) {
+				a = row[off+3]
+			}
+			pix := img.PixOffset(x, y)
+			img.Pix[pix+0] = r
+			img.Pix[pix+1] = g
+			img.Pix[pix+2] = b
+			img.Pix[pix+3] = a
+		}
+	}
+	return img, nil
 }

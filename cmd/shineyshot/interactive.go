@@ -83,6 +83,10 @@ func (i *interactiveCmd) Run() error {
 			i.printHelp()
 		case "capture":
 			i.handleCapture(args)
+		case "windows":
+			i.printWindowList()
+		case "screens":
+			i.printScreenList()
 		case "arrow":
 			i.handleArrow(args)
 		case "line":
@@ -126,9 +130,9 @@ func (i *interactiveCmd) Run() error {
 
 func (i *interactiveCmd) printHelp() {
 	fmt.Fprintln(os.Stdout, "Commands:")
-	fmt.Fprintln(os.Stdout, "  capture screen [DISPLAY]   capture full screen; use 'capture screen list' for displays")
-	fmt.Fprintln(os.Stdout, "  capture window [SELECTOR]  capture window by index/id/exec/title; 'capture window list' shows options")
-	fmt.Fprintln(os.Stdout, "  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'capture region list' shows screens")
+	fmt.Fprintln(os.Stdout, "  capture screen [DISPLAY]   capture full screen; use 'screens' to list displays")
+	fmt.Fprintln(os.Stdout, "  capture window SELECTOR    capture window by selector; use 'windows' to list options")
+	fmt.Fprintln(os.Stdout, "  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays")
 	fmt.Fprintln(os.Stdout, "  arrow x0 y0 x1 y1          draw arrow with current stroke")
 	fmt.Fprintln(os.Stdout, "  line x0 y0 x1 y1           draw line with current stroke")
 	fmt.Fprintln(os.Stdout, "  rect x0 y0 x1 y1           draw rectangle with current stroke")
@@ -145,8 +149,19 @@ func (i *interactiveCmd) printHelp() {
 	fmt.Fprintln(os.Stdout, "  savepictures               save to your Pictures directory")
 	fmt.Fprintln(os.Stdout, "  savehome                   save to your home directory")
 	fmt.Fprintln(os.Stdout, "  copy                       copy image to clipboard")
+	fmt.Fprintln(os.Stdout, "  windows                    list available windows and selectors")
+	fmt.Fprintln(os.Stdout, "  screens                    list available screens/displays")
 	fmt.Fprintln(os.Stdout, "  copyname                   copy last saved filename")
 	fmt.Fprintln(os.Stdout, "  quit                       exit interactive mode")
+	fmt.Fprintln(os.Stdout, "")
+	fmt.Fprintln(os.Stdout, "Window selectors:")
+	fmt.Fprintln(os.Stdout, "  index:<n>        window list index (see 'windows')")
+	fmt.Fprintln(os.Stdout, "  id:<hex|dec>     X11 window id")
+	fmt.Fprintln(os.Stdout, "  pid:<pid>        process id that owns the window")
+	fmt.Fprintln(os.Stdout, "  exec:<name>      executable name substring")
+	fmt.Fprintln(os.Stdout, "  class:<name>     X11 WM_CLASS substring")
+	fmt.Fprintln(os.Stdout, "  title:<text>     window title substring (useful for literal words like 'list')")
+	fmt.Fprintln(os.Stdout, "  <text>           fallback substring match on title/executable/class")
 }
 
 func (i *interactiveCmd) handleCapture(args []string) {
@@ -517,7 +532,7 @@ func (i *interactiveCmd) printWindowList() {
 		}
 		fmt.Fprintf(os.Stdout, "%s %s\n", marker, formatWindowLabel(win))
 	}
-	fmt.Fprintln(os.Stdout, "selectors: index:<n>, id:<hex>, pid:<pid>, exec:<name>, class:<name>, substring match")
+	fmt.Fprintln(os.Stdout, "selectors: index:<n>, id:<hex>, pid:<pid>, exec:<name>, class:<name>, title:<text>, substring match")
 }
 
 func formatWindowLabel(info capture.WindowInfo) string {

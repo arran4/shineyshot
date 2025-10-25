@@ -33,7 +33,9 @@ func CaptureScreenshot(display string) (*image.RGBA, error) {
 }
 
 // CaptureWindowDetailed captures the window that matches the selector and returns
-// both the image and the resolved window metadata.
+// both the image and the resolved window metadata. It prefers a direct X11 window
+// capture and falls back to cropping a desktop screenshot if the compositor
+// refuses to provide the pixels.
 func CaptureWindowDetailed(selector string) (*image.RGBA, WindowInfo, error) {
 	windows, err := ListWindows()
 	if err != nil {
@@ -46,13 +48,17 @@ func CaptureWindowDetailed(selector string) (*image.RGBA, WindowInfo, error) {
 	if info.Rect.Empty() {
 		return nil, WindowInfo{}, fmt.Errorf("window has empty geometry")
 	}
+	img, directErr := captureWindowImage(info.ID)
+	if directErr == nil {
+		return img, info, nil
+	}
 	shot, err := portalScreenshot(false)
 	if err != nil {
-		return nil, WindowInfo{}, err
+		return nil, WindowInfo{}, fmt.Errorf("window capture: %v; fallback screenshot failed: %w", directErr, err)
 	}
-	img, err := cropToRect(shot, info.Rect)
+	img, err = cropToRect(shot, info.Rect)
 	if err != nil {
-		return nil, WindowInfo{}, err
+		return nil, WindowInfo{}, fmt.Errorf("window capture: %v; fallback crop failed: %w", directErr, err)
 	}
 	return img, info, nil
 }
