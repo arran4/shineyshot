@@ -4,21 +4,28 @@ package clipboard
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
+	"os"
 	"sync"
 
 	"golang.design/x/clipboard"
 )
 
 var (
-	initOnce sync.Once
-	initErr  error
+	initOnce     sync.Once
+	initErr      error
+	errNoDisplay = errors.New("clipboard initialization requires DISPLAY or WAYLAND_DISPLAY")
 )
 
 func ensureInit() error {
 	initOnce.Do(func() {
+		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+			initErr = errNoDisplay
+			return
+		}
 		initErr = clipboard.Init()
 	})
 	return initErr
