@@ -175,7 +175,9 @@ func (d *drawCmd) Run() error {
 	}
 	img, err := png.Decode(f)
 	if err != nil {
-		f.Close()
+		if cerr := f.Close(); cerr != nil {
+			log.Printf("error closing %q: %v", f.Name(), cerr)
+		}
 		return err
 	}
 	if err := f.Close(); err != nil {

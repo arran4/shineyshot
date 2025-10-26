@@ -38,7 +38,9 @@ func newRoot() *root {
 }
 
 func (r *root) Run(args []string) error {
-	r.fs.Parse(args)
+	if err := r.fs.Parse(args); err != nil {
+		return err
+	}
 	if r.fs.NArg() < 1 {
 		return &UsageError{of: r}
 	}

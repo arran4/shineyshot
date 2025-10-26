@@ -33,7 +33,7 @@ func (c *interactiveCLI) FlagSet() *flag.FlagSet {
 }
 
 func (c *interactiveCLI) Program() string {
-	return c.interactiveCmd.r.Program()
+	return c.r.Program()
 }
 
 func (c *interactiveCLI) Run() error {

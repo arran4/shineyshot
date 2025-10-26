@@ -69,8 +69,12 @@ func (a *annotateCmd) Run() error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
 		dec, err := png.Decode(f)
+		if cerr := f.Close(); cerr != nil {
+			if err == nil {
+				err = cerr
+			}
+		}
 		if err != nil {
 			return err
 		}
