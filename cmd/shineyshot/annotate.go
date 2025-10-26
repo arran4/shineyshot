@@ -143,6 +143,7 @@ func (a *annotateCmd) Run() error {
 	lastSaved := detail
 	opts := []appstate.Option{
 		appstate.WithImage(img),
+		appstate.WithOutput(a.output),
 		appstate.WithTitle(windowTitle(titleOptions{
 			File:      fileName,
 			Mode:      "Annotate",
