@@ -102,13 +102,20 @@ func portalScreenshotOptions(interactive bool, captureOpts CaptureOptions) map[s
 	if captureOpts.IncludeCursor {
 		cursorMode = "embedded"
 	}
-	return map[string]dbus.Variant{
-		"interactive":    dbus.MakeVariant(interactive),
-		"handle_token":   dbus.MakeVariant(portalHandleToken()),
-		"modal":          dbus.MakeVariant(interactive),
-		"cursor_mode":    dbus.MakeVariant(cursorMode),
-		"restore_window": dbus.MakeVariant(captureOpts.IncludeDecorations),
+	opts := map[string]dbus.Variant{
+		"interactive":  dbus.MakeVariant(interactive),
+		"handle_token": dbus.MakeVariant(portalHandleToken()),
+		"modal":        dbus.MakeVariant(interactive),
+		"cursor_mode":  dbus.MakeVariant(cursorMode),
 	}
+	if captureOpts.IncludeDecorations {
+		opts["restore_window"] = dbus.MakeVariant(true)
+		opts["include-decoration"] = dbus.MakeVariant(true)
+	} else {
+		opts["restore_window"] = dbus.MakeVariant(false)
+		opts["include-decoration"] = dbus.MakeVariant(false)
+	}
+	return opts
 }
 
 func loadPNG(path string) (*image.RGBA, error) {

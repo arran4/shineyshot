@@ -14,18 +14,20 @@ func TestPortalScreenshotOptions(t *testing.T) {
 	t.Cleanup(func() { portalHandleToken = prevToken })
 
 	tests := []struct {
-		name        string
-		interactive bool
-		opts        CaptureOptions
-		wantCursor  string
-		wantRestore bool
+		name                  string
+		interactive           bool
+		opts                  CaptureOptions
+		wantCursor            string
+		wantRestore           bool
+		wantIncludeDecoration bool
 	}{
 		{
-			name:        "defaults",
-			interactive: false,
-			opts:        CaptureOptions{},
-			wantCursor:  "hidden",
-			wantRestore: false,
+			name:                  "defaults",
+			interactive:           false,
+			opts:                  CaptureOptions{},
+			wantCursor:            "hidden",
+			wantRestore:           false,
+			wantIncludeDecoration: false,
 		},
 		{
 			name:        "cursor and decorations",
@@ -34,8 +36,9 @@ func TestPortalScreenshotOptions(t *testing.T) {
 				IncludeDecorations: true,
 				IncludeCursor:      true,
 			},
-			wantCursor:  "embedded",
-			wantRestore: true,
+			wantCursor:            "embedded",
+			wantRestore:           true,
+			wantIncludeDecoration: true,
 		},
 	}
 
@@ -55,11 +58,14 @@ func TestPortalScreenshotOptions(t *testing.T) {
 			if got := boolVariant(t, values, "restore_window"); got != tc.wantRestore {
 				t.Fatalf("restore_window = %v, want %v", got, tc.wantRestore)
 			}
+			if got := boolVariant(t, values, "include-decoration"); got != tc.wantIncludeDecoration {
+				t.Fatalf("include-decoration = %v, want %v", got, tc.wantIncludeDecoration)
+			}
 			if got := stringVariant(t, values, "handle_token"); got != "test-token" {
 				t.Fatalf("handle_token = %q, want %q", got, "test-token")
 			}
-			if len(values) != 5 {
-				t.Fatalf("expected 5 options, got %d", len(values))
+			if len(values) != 6 {
+				t.Fatalf("expected 6 options, got %d", len(values))
 			}
 		})
 	}
