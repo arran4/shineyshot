@@ -170,7 +170,7 @@ shineyshot file -file "$target" draw arrow 120 120 320 180
 Run ShineyShot as a background service and communicate via UNIX sockets. The daemon runs within the current user session so scripts can reuse capture permissions without additional prompts.
 
 ```bash
-# Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets)
+# Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets) [Socket directory](#socket-directory) for `--dir` overrides)
 sh-5.3$ shineyshot background start demo-session
 started background session demo-session at /run/user/1000/shineyshot/demo-session.sock
 
@@ -193,12 +193,16 @@ sh-5.3$ shineyshot background attach demo-session
 arrow drawn
 > ^D
 
-# Stop and clean up when finished
+# Stop the session with the stop command when finished
 sh-5.3$ shineyshot background stop demo-session
 stop requested for demo-session
 ```
 
-Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run demo-session capture window "$1"` so scripts capture consistent evidence before processing.
+Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run MySession capture window "$1"` so scripts capture consistent evidence before processing.
+
+### Socket directory
+
+All background subcommands accept `--dir` to control where sockets live. When omitted, ShineyShot first checks `SHINEYSHOT_SOCKET_DIR`, then falls back to `$XDG_RUNTIME_DIR/shineyshot` on Unix-like systems, and finally `~/.shineyshot/sockets`. Point `--dir` at a project workspace or systemd runtime directory when the default discovery rules do not match your environment.
 
 ## Interactive Mode
 
