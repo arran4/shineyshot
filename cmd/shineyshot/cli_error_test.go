@@ -34,7 +34,7 @@ func TestAnnotateRunCaptureError(t *testing.T) {
 	captureScreenshotFn = func(string, capture.CaptureOptions) (*image.RGBA, error) { return nil, sentinel }
 	t.Cleanup(func() { captureScreenshotFn = original })
 
-	cmd := &annotateCmd{action: "capture", target: "screen"}
+	cmd := &annotateCmd{action: "capture", capture: annotateCaptureConfig{target: "screen"}}
 	if err := cmd.Run(); err == nil {
 		t.Fatalf("expected error")
 	} else {
@@ -63,6 +63,16 @@ func TestParseAnnotateClipboardCaptureError(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 	if want := "not supported"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected error to mention %q, got %v", want, err)
+	}
+}
+
+func TestParseAnnotateFileCaptureError(t *testing.T) {
+	_, err := parseAnnotateCmd([]string{"-file", "input.png", "capture", "screen"}, nil)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if want := "-file cannot be used"; !strings.Contains(err.Error(), want) {
 		t.Fatalf("expected error to mention %q, got %v", want, err)
 	}
 }

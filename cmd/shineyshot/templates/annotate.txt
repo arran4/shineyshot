@@ -10,4 +10,4 @@ Window selectors accept `active`, `index:<n>`, `id:<hex|dec>`, `pid:<pid>`,
 hex window ids (e.g., `0x3a00007`), or general substrings matching the title,
 executable, or class.
 Provide `-file` or a trailing FILE with `open` to choose the image.
-{{template "flags" .FlagSet}}
+{{template "flag_groups_section" .FlagGroups}}

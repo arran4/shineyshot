@@ -55,6 +55,8 @@ shineyshot annotate --shadow --shadow-radius 40 capture window "Settings Panel"
 shineyshot annotate capture region 0,0,1440,900
 ```
 
+When the compositor supports it, combine `annotate capture` with `--include-decorations` to keep window frames or `--include-cursor` to embed the pointer directly in the image.
+
 ### Drop shadows
 
 When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `-shadow` turns the effect on for the command while `-shadow-radius`, `-shadow-offset`, and `-shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
