@@ -79,6 +79,10 @@ func (s *snapshotCmd) Run() error {
 	if err != nil {
 		return err
 	}
+	if s.root != nil {
+		detail := s.describeCapture()
+		s.root.notifyCapture(detail, img)
+	}
 	var w io.Writer
 	if s.stdout {
 		w = os.Stdout
@@ -101,10 +105,13 @@ func (s *snapshotCmd) Run() error {
 		fmt.Fprintln(os.Stderr, "wrote PNG data to stdout")
 		return nil
 	}
+	saved := s.output
 	if abs, err := filepath.Abs(s.output); err == nil {
-		fmt.Fprintf(os.Stderr, "saved %s\n", abs)
-	} else {
-		fmt.Fprintf(os.Stderr, "saved %s\n", s.output)
+		saved = abs
+	}
+	fmt.Fprintf(os.Stderr, "saved %s\n", saved)
+	if s.root != nil {
+		s.root.notifySave(saved)
 	}
 	return nil
 }
@@ -128,6 +135,28 @@ func (s *snapshotCmd) capture() (*image.RGBA, error) {
 	default:
 		return nil, errors.New("unsupported capture mode")
 	}
+}
+
+func (s *snapshotCmd) describeCapture() string {
+	mode := strings.TrimSpace(s.mode)
+	switch mode {
+	case "screen":
+		if strings.TrimSpace(s.selector) != "" {
+			return fmt.Sprintf("screen %s", s.selector)
+		}
+	case "window":
+		if strings.TrimSpace(s.selector) != "" {
+			return fmt.Sprintf("window %s", s.selector)
+		}
+	case "region":
+		if strings.TrimSpace(s.rect) != "" {
+			return fmt.Sprintf("region %s", s.rect)
+		}
+	}
+	if mode == "" {
+		return "capture"
+	}
+	return mode
 }
 
 func (s *snapshotCmd) captureOptions() capture.CaptureOptions {
