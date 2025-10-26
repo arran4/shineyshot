@@ -5,4 +5,7 @@ Commands:
   annotate      launch the capture/annotate UI directly
   interactive   start the interactive portal
   background    capture in the background
+  windows       list available windows and selectors
+  colors        list available palette colors
+  widths        list available stroke widths
   version       display version information

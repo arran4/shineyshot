@@ -1,0 +1,3 @@
+Usage: {{.Program}} colors
+Show the palette colors that annotation tools can use.
+{{template "flags" .FlagSet}}
