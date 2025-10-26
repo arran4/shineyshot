@@ -34,6 +34,7 @@ type AppState struct {
 	ColorIdx int
 	WidthIdx int
 	Mode     Mode
+	Title    string
 
 	updateCh    chan struct{}
 	sendControl func(controlEvent)
@@ -63,6 +64,9 @@ func WithWidthIndex(idx int) Option { return func(a *AppState) { a.WidthIdx = id
 // WithMode configures the UI mode for the state machine.
 func WithMode(mode Mode) Option { return func(a *AppState) { a.Mode = mode } }
 
+// WithTitle sets the window title displayed in the UI.
+func WithTitle(title string) Option { return func(a *AppState) { a.Title = title } }
+
 // WithSettingsListener registers a callback for when drawing settings change.
 func WithSettingsListener(fn func(colorIdx, widthIdx int)) Option {
 	return func(a *AppState) { a.settingsFn = fn }
@@ -84,6 +88,9 @@ func New(opts ...Option) *AppState {
 	}
 	a.ColorIdx = clampColorIndex(a.ColorIdx)
 	a.WidthIdx = clampWidthIndex(a.WidthIdx)
+	if a.Title == "" {
+		a.Title = ProgramTitle
+	}
 	return a
 }
 
@@ -166,8 +173,15 @@ func (a *AppState) Main(s screen.Screen) {
 
 	// Ensure the toolbar is wide enough to fit the program title and all
 	// tool button labels so the UI contents are not clipped on start up.
+	title := a.Title
+	if title == "" {
+		title = ProgramTitle
+	}
 	d := &font.Drawer{Face: basicfont.Face7x13}
-	max := d.MeasureString("ShineyShot").Ceil() + 8 // padding
+	max := d.MeasureString(title).Ceil() + 8 // padding
+	if icon := toolbarIconImage(); icon != nil {
+		max += icon.Bounds().Dx() + 4
+	}
 	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "H:Num", "T:Text"}
 	for _, lbl := range toolLabels {
 		w := d.MeasureString(lbl).Ceil() + 8
@@ -181,7 +195,7 @@ func (a *AppState) Main(s screen.Screen) {
 
 	width := rgba.Bounds().Dx() + toolbarWidth
 	height := rgba.Bounds().Dy() + tabHeight + bottomHeight
-	w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height})
+	w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height, Title: title})
 	if err != nil {
 		log.Fatalf("new window: %v", err)
 	}
@@ -519,6 +533,7 @@ func (a *AppState) Main(s screen.Screen) {
 				messageUntil:      messageUntil,
 				handleShortcut:    handleShortcut,
 				annotationEnabled: annotationEnabled,
+				title:             title,
 			}
 			select {
 			case paintCh <- st:
