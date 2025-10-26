@@ -346,7 +346,7 @@ func (a *AppState) Main(s screen.Screen) {
 	}
 	toolbarVersion := ""
 	if a.Version != "" {
-		toolbarVersion = fmt.Sprintf("%s v%s", ProgramTitle, a.Version)
+		toolbarVersion = fmt.Sprintf("v%s", a.Version)
 	}
 	d := &font.Drawer{Face: basicfont.Face7x13}
 	max := d.MeasureString(ProgramTitle).Ceil() + 8 // padding
