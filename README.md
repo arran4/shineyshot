@@ -6,6 +6,37 @@
 
 ShineyShot brings capture and annotation tools together across four complementary modes so workflows can move from a quick markup to a fully scripted pipeline without switching apps. Updated screencaps for every workflow will land soon.
 
+## Installation
+
+### Prerequisites
+
+ShineyShot relies on CGO-backed bindings for GLFW and `golang.org/x/mobile`. Install the system packages before compiling:
+
+- **Linux (Debian/Ubuntu):** `sudo apt-get install build-essential pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`.
+- **Linux (Fedora):** `sudo dnf install @development-tools pkgconfig mesa-libGL-devel libX11-devel libXrandr-devel wayland-devel libxkbcommon-devel`.
+- **macOS:** Ensure the Xcode Command Line Tools are installed (`xcode-select --install`) and install GLFW via Homebrew (`brew install glfw`).
+
+### Prebuilt releases
+
+Download signed artifacts for Linux from the [latest GitHub release](https://github.com/arran4/shineyshot/releases/latest). GoReleaser publishes:
+
+- `.tar.gz` archives for `linux` on `amd64`, `386`, `arm64`, and ARMv6/v7.
+- Native packages in `.deb`, `.rpm`, `.apk`, and Arch Linux (`.pkg.tar.zst`) formats.
+
+Install the package format that matches your distribution, or extract the archive and place the `shineyshot` binary somewhere on your `PATH`.
+
+### Build and install
+
+Clone the repository or update to the desired revision, then run the following commands from the project root:
+
+```bash
+go mod download
+go build ./cmd/shineyshot
+go install ./cmd/shineyshot
+```
+
+The final command places the compiled binary in `$(go env GOBIN)` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) so it is available on your `PATH`.
+
 ## UI Mode
 
 Launch the graphical editor from any environment and control how it starts up with command-line flags.
@@ -14,8 +45,11 @@ Launch the graphical editor from any environment and control how it starts up wi
 # Open the editor directly on an existing image
 shineyshot annotate -file snapshot.png open
 
+# Paste from the clipboard directly into the editor
+shineyshot annotate -from-clipboard open
+
 # Capture the active window (or specify a selector) and jump straight into annotation
-shineyshot annotate capture window "Settings Panel"
+shineyshot annotate --shadow --shadow-radius 40 capture window "Settings Panel"
 
 # Start in capture region mode with a preset rectangle
 shineyshot annotate capture region 0,0,1440,900
@@ -23,7 +57,7 @@ shineyshot annotate capture region 0,0,1440,900
 
 ### Drop shadows
 
-When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `--shadow` turns the effect on for the command while `--shadow-radius`, `--shadow-offset`, and `--shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
+When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `-shadow` turns the effect on for the command while `-shadow-radius`, `-shadow-offset`, and `-shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
 
 Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard—to apply the configured shadow once per tab. The control politely steps aside after it runs so you do not accidentally stack multiple shadows on the same image.
 
@@ -42,6 +76,8 @@ Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard�
 
 Group repeated operations on a file behind the `file` subcommand. The file path is supplied once and passed to nested commands unless you override it.
 
+Behind the scenes the wrapper injects `-output` for `snapshot` and `-file`/`-output` for `draw`, `annotate`, and `preview` before handing control to the nested command. Provide replacement values alongside the nested command if you need a different destination—the extra flags you supply take precedence over the defaults that `file` adds.
+
 ```bash
 sh-5.3$ shineyshot file -file snapshot.png capture screen
 saved /home/user/Pictures/snapshot.png
@@ -55,6 +91,10 @@ Nested commands can still set `-file` or `-output` to redirect work elsewhere:
 ```bash
 sh-5.3$ shineyshot file -file snapshot.png draw -output annotated.png arrow 0 0 320 240
 saved /home/user/Pictures/annotated.png
+
+# Read from the clipboard, draw markup, and keep the result in the clipboard
+sh-5.3$ shineyshot file -file clip.png -from-clipboard draw -to-clipboard rect 40 40 480 320
+copied annotated clip.png to clipboard
 ```
 
 ### Capture screenshots on Linux
@@ -76,13 +116,24 @@ sh-5.3$ shineyshot file -file screenshot.png capture region 0,0,640,480
 Provide an optional selector argument—or `-select` for scripts—to target a specific display or window.
 Window captures fall back to the active window when no selector is provided. Supply regions with the `-rect` flag or trailing `x0,y0,x1,y1` coordinates.
 
-Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
+Pass `--stdout` to write the PNG bytes to stdout instead of creating a file. Add `--to-clipboard` when you want to skip disk altogether and push the capture straight into the clipboard for pasting elsewhere.
 
-When the compositor supports it, use `--include-decorations` to request window frames and `--include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
+When the compositor supports it, use `-include-decorations` to request window frames and `-include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
+
+`snapshot` captures also honour the drop-shadow flags discussed above so you can add framing immediately:
+
+```bash
+sh-5.3$ shineyshot snapshot --shadow --shadow-offset 24,24 capture window firefox
+```
 
 ### Draw quick markup
 
-Apply lightweight annotations to an existing image. Lines and arrows expand the canvas as needed so their endpoints stay visible.
+Apply lightweight annotations to an existing image. Lines and arrows expand the canvas as needed so their endpoints stay visible. Every draw command supports clipboard input/output so you can stay entirely in-memory:
+
+```bash
+sh-5.3$ shineyshot draw -from-clipboard -output bug.png rect 10 10 320 200
+sh-5.3$ shineyshot draw -file bug.png -to-clipboard text 60 120 "Needs padding"
+```
 
 Shapes accept the following coordinate formats. Each row pairs the argument list with a complete command you can paste into a script or terminal session:
 
@@ -94,7 +145,7 @@ Shapes accept the following coordinate formats. Each row pairs the argument list
 | circle | `cx cy radius`    | `shineyshot file -file input.png draw circle 120 120 30` |
 | number | `x y value`       | `shineyshot file -file input.png draw number 40 80 1` |
 | text   | `x y "string"`   | `shineyshot file -file input.png draw text 60 120 "Review"` |
-| mask   | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw mask 20 20 180 140` |
+| mask   | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw -mask-opacity 128 mask 20 20 180 140` |
 
 ### CLI automation example
 
@@ -119,32 +170,32 @@ shineyshot file -file "$target" draw arrow 120 120 320 180
 Run ShineyShot as a background service and communicate via UNIX sockets. The daemon runs within the current user session so scripts can reuse capture permissions without additional prompts.
 
 ```bash
-# Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets—see [Socket directory](#socket-directory) for `--dir` overrides)
-sh-5.3$ shineyshot background start MySession
-started background session MySession at /run/user/1000/shineyshot/MySession.sock
+# Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets) [Socket directory](#socket-directory) for `--dir` overrides)
+sh-5.3$ shineyshot background start demo-session
+started background session demo-session at /run/user/1000/shineyshot/demo-session.sock
 
 # List all active sessions
 sh-5.3$ shineyshot background list
 available sockets:
-  MySession
+  demo-session
 
 # Attach to a running session for live interaction
-sh-5.3$ shineyshot background attach MySession
+sh-5.3$ shineyshot background attach demo-session
 > arrow 0 0 320 240
 no image loaded
 > ^D
 
 # Run a single command within the session
-sh-5.3$ shineyshot background run MySession capture screen
+sh-5.3$ shineyshot background run demo-session capture screen
 captured screen current display
-sh-5.3$ shineyshot background attach MySession
+sh-5.3$ shineyshot background attach demo-session
 > arrow 0 0 320 240
 arrow drawn
 > ^D
 
 # Stop the session with the stop command when finished
-sh-5.3$ shineyshot background stop MySession
-stop requested for MySession
+sh-5.3$ shineyshot background stop demo-session
+stop requested for demo-session
 ```
 
 Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run MySession capture window "$1"` so scripts capture consistent evidence before processing.
@@ -209,7 +260,34 @@ captured screen current display
 rectangle drawn
 ```
 
-Launch the shell with `--include-decorations` or `--include-cursor` to keep those preferences active for every capture command in the session.
+Launch the shell with `--include-decorations`, `--include-cursor`, and notification flags (for example, `--notify-copy`) to keep those preferences active for every capture command in the session.
+
+## Global flags and configuration
+
+Enable desktop notifications at launch when you want audible or visual confirmation that an operation finished successfully:
+
+```bash
+# Announce captures, saves, and clipboard copies
+shineyshot --notify-capture --notify-save --notify-copy snapshot capture window "Release Notes"
+```
+
+Notification text and titles can be customised with environment variables:
+
+- `SHINEYSHOT_NOTIFY_TITLE` – overrides the notification title.
+- `SHINEYSHOT_NOTIFY_CAPTURE_TEXT` – template for capture alerts (receives the capture detail).
+- `SHINEYSHOT_NOTIFY_SAVE_TEXT` – template for save alerts (receives the saved path).
+- `SHINEYSHOT_NOTIFY_COPY_TEXT` – template for clipboard alerts (receives a short description).
+
+Background sockets default to `XDG_RUNTIME_DIR/shineyshot` on Linux or `~/.shineyshot/sockets` everywhere else. Set `SHINEYSHOT_SOCKET_DIR` (or pass `-dir`) to point the daemon and helpers somewhere specific.
+
+
+## Testing
+
+First-time runs may spend additional time downloading Go modules before executing. Once dependencies are cached, run all checks with:
+
+```bash
+go test ./...
+```
 
 ## License
 
