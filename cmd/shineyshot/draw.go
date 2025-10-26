@@ -16,23 +16,26 @@ import (
 	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
+	"github.com/example/shineyshot/internal/clipboard"
 	"golang.org/x/image/colornames"
 )
 
 // drawCmd performs simple markup operations on an image expanding the canvas when needed.
 type drawCmd struct {
-	file        string
-	output      string
-	colorSpec   string
-	color       color.RGBA
-	width       int
-	shape       string
-	coords      []int
-	text        string
-	textSize    float64
-	number      int
-	numberSize  int
-	maskOpacity int
+	file          string
+	output        string
+	fromClipboard bool
+	toClipboard   bool
+	colorSpec     string
+	color         color.RGBA
+	width         int
+	shape         string
+	coords        []int
+	text          string
+	textSize      float64
+	number        int
+	numberSize    int
+	maskOpacity   int
 	*root
 	fs *flag.FlagSet
 }
@@ -86,6 +89,10 @@ func parseDrawCmd(args []string, r *root) (*drawCmd, error) {
 	fs.Usage = usageFunc(d)
 	fs.StringVar(&d.file, "file", "", "input image file")
 	fs.StringVar(&d.output, "output", "", "output file path (defaults to input file)")
+	fs.BoolVar(&d.fromClipboard, "from-clipboard", false, "read the input image from the clipboard")
+	fs.BoolVar(&d.fromClipboard, "from-clip", false, "read the input image from the clipboard (alias)")
+	fs.BoolVar(&d.toClipboard, "to-clipboard", false, "copy the result to the clipboard")
+	fs.BoolVar(&d.toClipboard, "to-clip", false, "copy the result to the clipboard (alias)")
 	fs.StringVar(&d.colorSpec, "color", "red", "stroke or fill color name or hex value")
 	fs.IntVar(&d.width, "width", 2, "stroke width in pixels")
 	fs.Float64Var(&d.textSize, "text-size", appstate.DefaultTextSize(), "text size in points")
@@ -147,11 +154,21 @@ func parseDrawCmd(args []string, r *root) (*drawCmd, error) {
 		return nil, err
 	}
 	d.color = colorVal
-	if d.file == "" {
-		return nil, fmt.Errorf("input file is required")
-	}
-	if d.output == "" {
-		d.output = d.file
+	if d.fromClipboard {
+		if d.output == "" {
+			if d.file != "" {
+				d.output = d.file
+			} else {
+				return nil, fmt.Errorf("output file is required when reading from the clipboard")
+			}
+		}
+	} else {
+		if d.file == "" {
+			return nil, fmt.Errorf("input file is required")
+		}
+		if d.output == "" {
+			d.output = d.file
+		}
 	}
 	if d.width < 1 {
 		d.width = 1
@@ -169,22 +186,12 @@ func parseDrawCmd(args []string, r *root) (*drawCmd, error) {
 }
 
 func (d *drawCmd) Run() error {
-	f, err := os.Open(d.file)
+	src, err := d.loadSource()
 	if err != nil {
 		return err
 	}
-	img, err := png.Decode(f)
-	if err != nil {
-		if cerr := f.Close(); cerr != nil {
-			log.Printf("error closing %q: %v", f.Name(), cerr)
-		}
-		return err
-	}
-	if err := f.Close(); err != nil {
-		log.Printf("error closing %q: %v", f.Name(), err)
-	}
-	rgba := image.NewRGBA(img.Bounds())
-	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
+	rgba := image.NewRGBA(src.Bounds())
+	draw.Draw(rgba, rgba.Bounds(), src, image.Point{}, draw.Src)
 	rgba, err = d.applyShape(rgba)
 	if err != nil {
 		return err
@@ -210,7 +217,45 @@ func (d *drawCmd) Run() error {
 	if d.root != nil {
 		d.root.notifySave(saved)
 	}
+	if d.toClipboard {
+		if err := clipboard.WriteImage(rgba); err != nil {
+			return fmt.Errorf("copy PNG to clipboard: %w", err)
+		}
+		detail := filepath.Base(d.output)
+		if detail == "" {
+			detail = "image"
+		}
+		fmt.Fprintf(os.Stderr, "copied %s to clipboard\n", detail)
+		if d.root != nil {
+			d.root.notifyCopy(detail)
+		}
+	}
 	return nil
+}
+
+func (d *drawCmd) loadSource() (image.Image, error) {
+	if d.fromClipboard {
+		img, err := clipboard.ReadImage()
+		if err != nil {
+			return nil, fmt.Errorf("read clipboard image: %w", err)
+		}
+		return img, nil
+	}
+	f, err := os.Open(d.file)
+	if err != nil {
+		return nil, err
+	}
+	img, err := png.Decode(f)
+	if err != nil {
+		if cerr := f.Close(); cerr != nil {
+			log.Printf("error closing %q: %v", f.Name(), cerr)
+		}
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		log.Printf("error closing %q: %v", f.Name(), err)
+	}
+	return img, nil
 }
 
 func expectInts(args []string, n int, shape string) ([]int, error) {
@@ -399,13 +444,20 @@ func maxInt(a, b int) int {
 }
 
 var drawFlagNames = map[string]struct{}{
-	"file":         {},
-	"output":       {},
-	"color":        {},
-	"width":        {},
-	"text-size":    {},
-	"number-size":  {},
-	"mask-opacity": {},
+	"file":           {},
+	"output":         {},
+	"from-clipboard": {},
+	"from-clip":      {},
+	"color":          {},
+	"width":          {},
+	"text-size":      {},
+	"number-size":    {},
+	"mask-opacity":   {},
+}
+
+var drawBoolFlags = map[string]struct{}{
+	"from-clipboard": {},
+	"from-clip":      {},
 }
 
 func splitDrawArgs(args []string) ([]string, []string, error) {
@@ -436,6 +488,10 @@ func splitDrawArgs(args []string) ([]string, []string, error) {
 		norm := "-" + base
 		if len(parts) == 2 {
 			flags = append(flags, norm+"="+parts[1])
+			continue
+		}
+		if _, ok := drawBoolFlags[base]; ok {
+			flags = append(flags, norm)
 			continue
 		}
 		if i+1 >= len(args) {
