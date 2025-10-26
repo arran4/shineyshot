@@ -25,25 +25,6 @@ shineyshot annotate capture-region --region 0,0,1440,900 --output ./exports/tuto
 4. **Adjust** – constrain angles with <kbd>Shift</kbd>, apply saved colour presets, or toggle grid snapping for alignment.
 5. **Export** – save to PNG, copy to clipboard, or set a default path with `shineyshot annotate --output annotated.png`.
 
-### Repeatable GUI session
-
-Store launcher flags in a shell script so the same capture layout is always available:
-
-```bash
-#!/usr/bin/env bash
-# ~/.local/bin/shineyshot-daily
-set -euo pipefail
-export SHINEYSHOT_EXPORT_DIR="$HOME/Pictures/shineyshot"
-
-shineyshot annotate capture-window \
-  --name "Daily status" \
-  --output "${SHINEYSHOT_EXPORT_DIR}/$(date +%F)-status.png"
-```
-
-Make the script executable and bind it to a desktop shortcut or window manager hotkey.
-
----
-
 ## Modes at a Glance
 
 - **UI mode** keeps the graphical editor front and centre for drag-and-drop annotation, layering, and exporting.
@@ -51,22 +32,23 @@ Make the script executable and bind it to a desktop shortcut or window manager h
 - **CLI background mode** keeps a session alive so other commands—or other people—can reuse the same permissions.
 - **Interactive mode** gives you a text-driven shell with history and inline help.
 
----
-
 ## CLI File Mode
 
 Group repeated operations on a file behind the `file` subcommand. The file path is supplied once and passed to nested commands unless you override it.
 
 ```bash
-shineyshot file -file snapshot.png snapshot --mode screen
-shineyshot file -file snapshot.png draw line 10 10 200 120
-shineyshot file -file snapshot.png preview
+sh-5.3$ shineyshot file -file snapshot.png snapshot --mode screen
+saved /home/arran/Documents/Projects/shineyshot/snapshot.png
+sh-5.3$ shineyshot file -file snapshot.png draw line 10 10 200 120
+saved /home/arran/Documents/Projects/shineyshot/snapshot.png
+sh-5.3$ shineyshot file -file snapshot.png preview
 ```
 
 Nested commands can still set `-file` or `-output` to redirect work elsewhere:
 
 ```bash
-shineyshot file -file snapshot.png draw -output annotated.png arrow 0 0 320 240
+sh-5.3$ shineyshot file -file snapshot.png draw -output annotated.png arrow 0 0 320 240
+saved /home/arran/Documents/Projects/shineyshot/annotated.png
 ```
 
 ### Capture screenshots on Linux
@@ -75,13 +57,14 @@ ShineyShot talks to the XDG desktop portal and prints Linux-friendly status mess
 
 ```bash
 # Capture the entire display (default)
-shineyshot snapshot --mode screen --display HDMI-A-1
+sh-5.3$ shineyshot snapshot --mode screen --display 0
+saved ./screenshot.png
 
 # Capture the currently active portal window
-shineyshot snapshot --mode window --window firefox
+sh-5.3$ shineyshot snapshot --mode window --window firefox
 
 # Capture a specific rectangle (x0,y0,x1,y1)
-shineyshot snapshot --mode region --region 0,0,640,480
+sh-5.3$ shineyshot snapshot --mode region --region 0,0,640,480
 ```
 
 Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
@@ -115,9 +98,9 @@ mkdir -p "$output_dir"
 
 target="$output_dir/$(date +%F)-dashboard.png"
 
-shineyshot snapshot --mode window --window nightly-dashboard --output "$target"
-shineyshot draw -file "$target" text 40 60 "Build: ${CI_PIPELINE_ID:-local}" \
-  arrow 120 120 320 180
+shineyshot snapshot --mode window --window goland --output "$target"
+shineyshot draw -file "$target" text 40 60 "Build: ${CI_PIPELINE_ID:-local}"
+shineyshot draw -file "$target" arrow 120 120 320 180
 ```
 
 ---
@@ -128,19 +111,31 @@ Run ShineyShot as a background service and communicate via UNIX sockets. The dae
 
 ```bash
 # Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets)
-shineyshot background start team-room
+sh-5.3$ shineyshot background start team-room
+started background session team-room at /run/user/1000/shineyshot/team-room.sock
 
 # List all active sessions
-shineyshot background list
+sh-5.3$ shineyshot background list
+available sockets:
+  team-room
 
 # Attach to a running session for live interaction
-shineyshot background attach team-room
+sh-5.3$ shineyshot background attach team-room
+> arrow 0 0 320 240
+no image loaded
+> ^D
 
 # Run a single command within the session
-shineyshot background run team-room snapshot --mode screen
+sh-5.3$ shineyshot background run team-room capture screen
+captured screen current display
+sh-5.3$ shineyshot background attach team-room
+> arrow 0 0 320 240
+arrow drawn
+> ^D
 
 # Stop and clean up when finished
-shineyshot background stop team-room
+sh-5.3$ shineyshot background stop team-roomom
+stop requested for team-room
 ```
 
 Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run default snapshot --mode window --window "$1"` so scripts capture consistent evidence before processing.
@@ -152,34 +147,56 @@ Add `background serve` when embedding ShineyShot into another long-lived process
 Use the text-driven shell for command discovery, history, and inline execution:
 
 ```bash
-shineyshot interactive
+sh-5.3$ shineyshot interactive
+Interactive mode. Type 'help' for commands.
+> help
+Commands:
+  capture screen [DISPLAY]   capture full screen; use 'screens' to list displays
+  capture window SELECTOR    capture window by selector; use 'windows' to list options
+  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays
+  arrow x0 y0 x1 y1          draw arrow with current stroke
+  line x0 y0 x1 y1           draw line with current stroke
+  rect x0 y0 x1 y1           draw rectangle with current stroke
+  circle x y r               draw circle with current stroke
+  crop x0 y0 x1 y1           crop image to rectangle
+  color [value|list]         set or list palette colors
+  colors                     list palette colors
+  width [value|list]         set or list stroke widths
+  widths                     list stroke widths
+  show                       open synced annotation window
+  preview                    open copy in separate window
+  save FILE                  save image to FILE
+  savetmp                    save to /tmp with a unique filename
+  savepictures               save to your Pictures directory
+  savehome                   save to your home directory
+  copy                       copy image to clipboard
+  windows                    list available windows and selectors
+  screens                    list available screens/displays
+  copyname                   copy last saved filename
+  background start [NAME] [DIR]   launch a background socket session
+  background stop [NAME] [DIR]    stop a background socket session
+  background list [DIR]           list background sessions
+  background clean [DIR]          remove dead background sockets
+  background run [NAME] COMMAND [ARGS...]   run a socket command (e.g., 'background run capture screen')
+  quit                       exit interactive mode
+
+Window selectors:
+  index:<n>        window list index (see 'windows')
+  id:<hex|dec>     X11 window id
+  pid:<pid>        process id that owns the window
+  exec:<name>      executable name substring
+  class:<name>     X11 WM_CLASS substring
+  title:<text>     window title substring (useful for literal words like 'list')
+  <text>           fallback substring match on title/executable/class
 ```
 
 From inside the shell, run commands such as `snapshot --mode window` or `draw rect 10 10 200 180`. You can also pre-seed commands when launching:
 
 ```bash
-shineyshot interactive -e "snapshot --mode screen" -e "draw rect 10 10 200 200"
+sh-5.3$ shineyshot interactive -e "capture screen" -e "rect 10 10 200 200"
+captured screen current display
+rectangle drawn
 ```
-
-To drive the shell against a background session, supply the session name and optional socket directory:
-
-```bash
-shineyshot interactive -name team-room -dir /run/user/1000/shineyshot
-```
-
-### Interactive scripting example
-
-Capture a repeatable sequence, export it, and reuse it elsewhere:
-
-```bash
-shineyshot interactive <<'EOF'
-snapshot --mode screen
-draw rect 20 20 420 280
-:export ./scripts/capture-flow.sh
-EOF
-```
-
----
 
 ## License
 

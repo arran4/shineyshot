@@ -26,3 +26,6 @@ go.work.sum
 .env
 
 /screenshot.png
+/shineyshot
+/snapshot.png
+/annotated.png
