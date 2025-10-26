@@ -120,34 +120,34 @@ Run ShineyShot as a background service and communicate via UNIX sockets. The dae
 
 ```bash
 # Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets)
-sh-5.3$ shineyshot background start MySession
-started background session MySession at /run/user/1000/shineyshot/MySession.sock
+sh-5.3$ shineyshot background start demo-session
+started background session demo-session at /run/user/1000/shineyshot/demo-session.sock
 
 # List all active sessions
 sh-5.3$ shineyshot background list
 available sockets:
-  MySession
+  demo-session
 
 # Attach to a running session for live interaction
-sh-5.3$ shineyshot background attach MySession
+sh-5.3$ shineyshot background attach demo-session
 > arrow 0 0 320 240
 no image loaded
 > ^D
 
 # Run a single command within the session
-sh-5.3$ shineyshot background run MySession capture screen
+sh-5.3$ shineyshot background run demo-session capture screen
 captured screen current display
-sh-5.3$ shineyshot background attach MySession
+sh-5.3$ shineyshot background attach demo-session
 > arrow 0 0 320 240
 arrow drawn
 > ^D
 
 # Stop and clean up when finished
-sh-5.3$ shineyshot background stop MySession
-stop requested for MySession
+sh-5.3$ shineyshot background stop demo-session
+stop requested for demo-session
 ```
 
-Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run MySession capture window "$1"` so scripts capture consistent evidence before processing.
+Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run demo-session capture window "$1"` so scripts capture consistent evidence before processing.
 
 ## Interactive Mode
 
