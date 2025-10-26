@@ -12,22 +12,18 @@ Launch the graphical editor from any environment and control how it starts up wi
 
 ```bash
 # Open the editor directly on an existing image
-shineyshot annotate open-file -file snapshot.png -output annotated.png
+shineyshot annotate -file snapshot.png open
 
-# Capture a window and pre-fill the title for the exported asset
-shineyshot annotate capture-window --name "Settings Panel" --output annotated-settings.png
+# Capture a window by selector and jump straight into annotation
+shineyshot annotate capture window "Settings Panel"
 
-# Start in capture-region mode with a preset aspect ratio and export folder
-shineyshot annotate capture-region --region 0,0,1440,900 --output ./exports/tutorial-step.png
+# Start in capture region mode with a preset rectangle
+shineyshot annotate capture region 0,0,1440,900
 ```
 
-### Capture-to-export checklist
+### Screenshot
 
-1. **Start the editor** – run `shineyshot annotate` to open the canvas.
-2. **Capture** – pick **Capture screen**, **Capture window**, or **Capture region**. Region capture provides crosshair guides and zoomed previews for precise selection.
-3. **Annotate** – add arrows, boxes, text callouts, and blur masks. The layer sidebar tracks visibility, order, and naming.
-4. **Adjust** – constrain angles with <kbd>Shift</kbd>, apply saved colour presets, or toggle grid snapping for alignment.
-5. **Export** – save to PNG, copy to clipboard, or set a default path with `shineyshot annotate --output annotated.png`.
+_Annotated workflow screenshot coming soon._
 
 ## Modes at a Glance
 
@@ -41,10 +37,10 @@ shineyshot annotate capture-region --region 0,0,1440,900 --output ./exports/tuto
 Group repeated operations on a file behind the `file` subcommand. The file path is supplied once and passed to nested commands unless you override it.
 
 ```bash
-sh-5.3$ shineyshot file -file snapshot.png snapshot --mode screen
-saved /home/arran/Documents/Projects/shineyshot/snapshot.png
+sh-5.3$ shineyshot file -file snapshot.png capture screen
+saved /home/user/Pictures/snapshot.png
 sh-5.3$ shineyshot file -file snapshot.png draw line 10 10 200 120
-saved /home/arran/Documents/Projects/shineyshot/snapshot.png
+saved /home/user/Pictures/snapshot.png
 sh-5.3$ shineyshot file -file snapshot.png preview
 ```
 
@@ -52,24 +48,27 @@ Nested commands can still set `-file` or `-output` to redirect work elsewhere:
 
 ```bash
 sh-5.3$ shineyshot file -file snapshot.png draw -output annotated.png arrow 0 0 320 240
-saved /home/arran/Documents/Projects/shineyshot/annotated.png
+saved /home/user/Pictures/annotated.png
 ```
 
 ### Capture screenshots on Linux
 
-ShineyShot talks to the XDG desktop portal and prints Linux-friendly status messages describing where the image is saved. Pick from three capture modes:
+ShineyShot talks to the desktop portal and prints Linux-friendly status messages describing where the image is saved. Pick from three capture modes:
 
 ```bash
 # Capture the entire display (default)
-sh-5.3$ shineyshot snapshot --mode screen --display 0
-saved ./screenshot.png
+sh-5.3$ shineyshot file -file screenshot.png capture screen 0
+saved /home/user/Pictures/screenshot.png
 
 # Capture the currently active portal window
-sh-5.3$ shineyshot snapshot --mode window --window firefox
+sh-5.3$ shineyshot file -file screenshot.png capture window firefox
 
 # Capture a specific rectangle (x0,y0,x1,y1)
-sh-5.3$ shineyshot snapshot --mode region --region 0,0,640,480
+sh-5.3$ shineyshot file -file screenshot.png capture region 0,0,640,480
 ```
+
+Provide an optional selector argument—or `-select` for scripts—to target a specific display or window. Supply regions with the
+`-rect` flag or trailing `x0,y0,x1,y1` coordinates.
 
 Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
 
@@ -81,13 +80,13 @@ Shapes accept the following coordinate formats. Each row pairs the argument list
 
 | Shape  | Arguments         | Example command |
 | ------ | ----------------- | --------------- |
-| line   | `x0 y0 x1 y1`     | `shineyshot draw -file input.png line 10 10 200 120` |
-| arrow  | `x0 y0 x1 y1`     | `shineyshot draw -file input.png arrow -color green 10 10 200 160` |
-| rect   | `x0 y0 x1 y1`     | `shineyshot draw -file input.png rect 10 10 220 160` |
-| circle | `cx cy radius`    | `shineyshot draw -file input.png circle 120 120 30` |
-| number | `x y value`       | `shineyshot draw -file input.png number 40 80 1` |
-| text   | `x y "string"`   | `shineyshot draw -file input.png text 60 120 "Review"` |
-| mask   | `x0 y0 x1 y1`     | `shineyshot draw -file input.png mask 20 20 180 140` |
+| line   | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw line 10 10 200 120` |
+| arrow  | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw -color green arrow 10 10 200 160` |
+| rect   | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw rect 10 10 220 160` |
+| circle | `cx cy radius`    | `shineyshot file -file input.png draw circle 120 120 30` |
+| number | `x y value`       | `shineyshot file -file input.png draw number 40 80 1` |
+| text   | `x y "string"`   | `shineyshot file -file input.png draw text 60 120 "Review"` |
+| mask   | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw mask 20 20 180 140` |
 
 ### CLI automation example
 
@@ -102,9 +101,9 @@ mkdir -p "$output_dir"
 
 target="$output_dir/$(date +%F)-dashboard.png"
 
-shineyshot snapshot --mode window --window goland --output "$target"
-shineyshot draw -file "$target" text 40 60 "Build: ${CI_PIPELINE_ID:-local}"
-shineyshot draw -file "$target" arrow 120 120 320 180
+shineyshot file -file "$target" capture window goland
+shineyshot file -file "$target" draw text 40 60 "Build: ${CI_PIPELINE_ID:-local}"
+shineyshot file -file "$target" draw arrow 120 120 320 180
 ```
 
 ## CLI Background Mode
@@ -113,34 +112,34 @@ Run ShineyShot as a background service and communicate via UNIX sockets. The dae
 
 ```bash
 # Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets)
-sh-5.3$ shineyshot background start team-room
-started background session team-room at /run/user/1000/shineyshot/team-room.sock
+sh-5.3$ shineyshot background start MySession
+started background session MySession at /run/user/1000/shineyshot/MySession.sock
 
 # List all active sessions
 sh-5.3$ shineyshot background list
 available sockets:
-  team-room
+  MySession
 
 # Attach to a running session for live interaction
-sh-5.3$ shineyshot background attach team-room
+sh-5.3$ shineyshot background attach MySession
 > arrow 0 0 320 240
 no image loaded
 > ^D
 
 # Run a single command within the session
-sh-5.3$ shineyshot background run team-room capture screen
+sh-5.3$ shineyshot background run MySession capture screen
 captured screen current display
-sh-5.3$ shineyshot background attach team-room
+sh-5.3$ shineyshot background attach MySession
 > arrow 0 0 320 240
 arrow drawn
 > ^D
 
 # Stop and clean up when finished
-sh-5.3$ shineyshot background stop team-roomom
-stop requested for team-room
+sh-5.3$ shineyshot background stop MySession
+stop requested for MySession
 ```
 
-Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run default snapshot --mode window --window "$1"` so scripts capture consistent evidence before processing.
+Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run MySession capture window "$1"` so scripts capture consistent evidence before processing.
 
 ## Interactive Mode
 
@@ -190,7 +189,7 @@ Window selectors:
   <text>           fallback substring match on title/executable/class
 ```
 
-From inside the shell, run commands such as `snapshot --mode window` or `draw rect 10 10 200 180`. You can also pre-seed commands when launching:
+From inside the shell, run commands such as `capture window` or `draw rect 10 10 200 180`. You can also pre-seed commands when launching:
 
 ```bash
 sh-5.3$ shineyshot interactive -e "capture screen" -e "rect 10 10 200 200"

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
 )
@@ -25,6 +26,11 @@ type root struct {
 
 func (r *root) Program() string {
 	return r.program
+}
+
+func (r *root) subcommand(name string) *root {
+	program := strings.TrimSpace(strings.Join([]string{r.program, name}, " "))
+	return &root{program: program, state: r.state}
 }
 
 func (r *root) FlagSet() *flag.FlagSet {

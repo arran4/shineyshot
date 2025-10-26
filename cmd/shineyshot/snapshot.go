@@ -17,12 +17,11 @@ import (
 )
 
 type snapshotCmd struct {
-	output  string
-	stdout  bool
-	mode    string
-	window  string
-	display string
-	region  string
+	output   string
+	stdout   bool
+	mode     string
+	selector string
+	rect     string
 	*root
 	fs *flag.FlagSet
 }
@@ -35,20 +34,38 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	fs := flag.NewFlagSet("snapshot", flag.ExitOnError)
 	s := &snapshotCmd{root: r, fs: fs}
 	fs.Usage = usageFunc(s)
-	fs.StringVar(&s.output, "output", "screenshot.png", "output file path")
-	fs.BoolVar(&s.stdout, "stdout", false, "write PNG to stdout")
-	fs.StringVar(&s.mode, "mode", "screen", "capture mode: screen, window, or region")
-	fs.StringVar(&s.window, "window", "", "window selector when mode is window")
-	fs.StringVar(&s.display, "display", "", "monitor selector when mode is screen")
-	fs.StringVar(&s.region, "region", "", "capture rectangle x0,y0,x1,y1 when mode is region")
+	fs.StringVar(&s.output, "output", "screenshot.png", "write the capture to this file path")
+	fs.BoolVar(&s.stdout, "stdout", false, "write PNG data to stdout")
+	fs.StringVar(&s.selector, "select", "", "selector for screen or window capture")
+	fs.StringVar(&s.rect, "rect", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	s.mode = strings.ToLower(strings.TrimSpace(s.mode))
+	operands := fs.Args()
+	if len(operands) == 0 {
+		return nil, &UsageError{of: s}
+	}
+	if strings.EqualFold(operands[0], "capture") {
+		operands = operands[1:]
+	}
+	if len(operands) == 0 {
+		return nil, &UsageError{of: s}
+	}
+	s.mode = strings.ToLower(strings.TrimSpace(operands[0]))
 	switch s.mode {
 	case "screen", "window", "region":
 	default:
-		return nil, fmt.Errorf("invalid mode %q", s.mode)
+		return nil, &UsageError{of: s}
+	}
+	if len(operands) > 1 {
+		arg := strings.TrimSpace(strings.Join(operands[1:], " "))
+		if s.mode == "region" {
+			if s.rect == "" {
+				s.rect = arg
+			}
+		} else if s.selector == "" {
+			s.selector = arg
+		}
 	}
 	return s, nil
 }
@@ -91,14 +108,14 @@ func (s *snapshotCmd) Run() error {
 func (s *snapshotCmd) capture() (*image.RGBA, error) {
 	switch s.mode {
 	case "screen":
-		return capture.CaptureScreenshot(s.display)
+		return capture.CaptureScreenshot(s.selector)
 	case "window":
-		return capture.CaptureWindow(s.window)
+		return capture.CaptureWindow(s.selector)
 	case "region":
-		if strings.TrimSpace(s.region) == "" {
+		if strings.TrimSpace(s.rect) == "" {
 			return capture.CaptureRegion()
 		}
-		rect, err := parseRect(s.region)
+		rect, err := parseRect(s.rect)
 		if err != nil {
 			return nil, err
 		}

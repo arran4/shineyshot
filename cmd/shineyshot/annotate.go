@@ -6,6 +6,7 @@ import (
 	"image/draw"
 	"image/png"
 	"os"
+	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
 	"github.com/example/shineyshot/internal/capture"
@@ -13,9 +14,12 @@ import (
 
 // annotateCmd represents the annotate subcommand.
 type annotateCmd struct {
-	mode   string
-	file   string
-	output string
+	action   string
+	target   string
+	selector string
+	rect     string
+	file     string
+	output   string
 	*root
 	fs *flag.FlagSet
 }
@@ -28,43 +32,87 @@ func parseAnnotateCmd(args []string, r *root) (*annotateCmd, error) {
 	fs := flag.NewFlagSet("annotate", flag.ExitOnError)
 	a := &annotateCmd{root: r, fs: fs}
 	fs.Usage = usageFunc(a)
-	fs.StringVar(&a.file, "file", "", "image file to annotate")
-	fs.StringVar(&a.output, "output", "annotated.png", "output file path")
-	if len(args) < 1 {
+	fs.StringVar(&a.file, "file", "", "image file to open in the editor")
+	fs.StringVar(&a.selector, "select", "", "selector for screen or window capture")
+	fs.StringVar(&a.rect, "rect", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	operands := fs.Args()
+	if len(operands) == 0 {
 		return nil, &UsageError{of: a}
 	}
-	a.mode = args[0]
-	if err := fs.Parse(args[1:]); err != nil {
-		return nil, err
+	a.action = strings.ToLower(strings.TrimSpace(operands[0]))
+	switch a.action {
+	case "capture":
+		if len(operands) < 2 {
+			return nil, &UsageError{of: a}
+		}
+		a.target = strings.ToLower(strings.TrimSpace(operands[1]))
+		switch a.target {
+		case "screen", "window", "region":
+		default:
+			return nil, &UsageError{of: a}
+		}
+		if len(operands) > 2 {
+			arg := strings.TrimSpace(strings.Join(operands[2:], " "))
+			if a.target == "region" {
+				if a.rect == "" {
+					a.rect = arg
+				}
+			} else if a.selector == "" {
+				a.selector = arg
+			}
+		}
+		if a.target != "region" && strings.TrimSpace(a.rect) != "" {
+			return nil, &UsageError{of: a}
+		}
+	case "open":
+		if a.file == "" {
+			if len(operands) < 2 {
+				return nil, &UsageError{of: a}
+			}
+			a.file = strings.TrimSpace(strings.Join(operands[1:], " "))
+		}
+		if a.file == "" {
+			return nil, &UsageError{of: a}
+		}
+		a.output = a.file
+	default:
+		return nil, &UsageError{of: a}
 	}
 	return a, nil
 }
 
 func (a *annotateCmd) Run() error {
 	var img *image.RGBA
-	switch a.mode {
-	case "capture-screen":
+	switch a.action {
+	case "capture":
 		var err error
-		img, err = capture.CaptureScreenshot("")
+		switch a.target {
+		case "screen":
+			img, err = capture.CaptureScreenshot(a.selector)
+		case "window":
+			img, err = capture.CaptureWindow(a.selector)
+		case "region":
+			rectSpec := a.rect
+			if rectSpec == "" {
+				rectSpec = a.selector
+			}
+			if strings.TrimSpace(rectSpec) == "" {
+				img, err = capture.CaptureRegion()
+			} else {
+				var rect image.Rectangle
+				rect, err = parseRect(rectSpec)
+				if err == nil {
+					img, err = capture.CaptureRegionRect(rect)
+				}
+			}
+		}
 		if err != nil {
 			return err
 		}
-	case "capture-window":
-		var err error
-		img, err = capture.CaptureWindow("")
-		if err != nil {
-			return err
-		}
-	case "capture-region":
-		var err error
-		img, err = capture.CaptureRegion()
-		if err != nil {
-			return err
-		}
-	case "open-file":
-		if a.file == "" {
-			return &UsageError{of: a}
-		}
+	case "open":
 		f, err := os.Open(a.file)
 		if err != nil {
 			return err
@@ -80,10 +128,12 @@ func (a *annotateCmd) Run() error {
 		}
 		img = image.NewRGBA(dec.Bounds())
 		draw.Draw(img, img.Bounds(), dec, image.Point{}, draw.Src)
-	default:
-		return &UsageError{of: a}
 	}
-	st := appstate.New(appstate.WithImage(img), appstate.WithOutput(a.output))
+	opts := []appstate.Option{appstate.WithImage(img)}
+	if strings.TrimSpace(a.output) != "" {
+		opts = append(opts, appstate.WithOutput(a.output))
+	}
+	st := appstate.New(opts...)
 	st.Run()
 	return nil
 }

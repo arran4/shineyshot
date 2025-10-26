@@ -1,3 +1,13 @@
-Usage: {{.Program}} annotate <capture-screen|capture-window|capture-region|open-file> [flags]
+Usage:
+  {{.Program}} annotate [flags] capture <screen|window|region> [selector]
+  {{.Program}} annotate [flags] open [FILE]
 Launch the annotation UI using the chosen input method.
+Use `-select` for screen/window selectors or `-rect` for scripted regions.
+Screen selectors accept `primary`, numeric indexes (with or without a leading `#`),
+or substrings of the monitor name. Leave the selector empty to capture the default monitor.
+Window selectors accept `active`, `index:<n>`, `id:<hex|dec>`, `pid:<pid>`,
+`exec:<name>`, `class:<name>`, `title:<text>`, `name:<text>`, plain numeric indexes,
+hex window ids (e.g., `0x3a00007`), or general substrings matching the title,
+executable, or class.
+Provide `-file` or a trailing FILE with `open` to choose the image.
 {{template "flags" .FlagSet}}
