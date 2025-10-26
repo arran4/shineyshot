@@ -23,7 +23,7 @@ shineyshot annotate capture region 0,0,1440,900
 
 ### Drop shadows
 
-When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `--shadow` turns the effect on for the command while `--shadow-radius`, `--shadow-offset`, and `--shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
+When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `-shadow` turns the effect on for the command while `-shadow-radius`, `-shadow-offset`, and `-shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
 
 Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard—to apply the configured shadow once per tab. The control politely steps aside after it runs so you do not accidentally stack multiple shadows on the same image.
 
@@ -76,9 +76,9 @@ sh-5.3$ shineyshot file -file screenshot.png capture region 0,0,640,480
 Provide an optional selector argument—or `-select` for scripts—to target a specific display or window.
 Window captures fall back to the active window when no selector is provided. Supply regions with the `-rect` flag or trailing `x0,y0,x1,y1` coordinates.
 
-Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
+Pass `-stdout` to write the PNG bytes to stdout instead of creating a file.
 
-When the compositor supports it, use `--include-decorations` to request window frames and `--include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
+When the compositor supports it, use `-include-decorations` to request window frames and `-include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
 
 ### Draw quick markup
 
@@ -205,7 +205,7 @@ captured screen current display
 rectangle drawn
 ```
 
-Launch the shell with `--include-decorations` or `--include-cursor` to keep those preferences active for every capture command in the session.
+Launch the shell with `-include-decorations` or `-include-cursor` to keep those preferences active for every capture command in the session.
 
 ## License
 
