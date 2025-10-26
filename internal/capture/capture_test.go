@@ -40,11 +40,17 @@ func TestCaptureScreenshotPortalError(t *testing.T) {
 	t.Helper()
 
 	originalPortal := portalScreenshotFn
+	originalCapture := portalCapture
 	sentinel := errors.New("portal down")
-	portalScreenshotFn = func(bool) (*image.RGBA, error) { return nil, sentinel }
-	t.Cleanup(func() { portalScreenshotFn = originalPortal })
+	stub := func(bool, CaptureOptions) (*image.RGBA, error) { return nil, sentinel }
+	portalScreenshotFn = stub
+	portalCapture = stub
+	t.Cleanup(func() {
+		portalScreenshotFn = originalPortal
+		portalCapture = originalCapture
+	})
 
-	if _, err := CaptureScreenshot(""); err == nil {
+	if _, err := CaptureScreenshot("", CaptureOptions{}); err == nil {
 		t.Fatalf("expected error")
 	} else {
 		if !errors.Is(err, sentinel) {
@@ -60,17 +66,23 @@ func TestCaptureScreenshotDisplayMonitorError(t *testing.T) {
 	t.Helper()
 
 	originalPortal := portalScreenshotFn
-	portalScreenshotFn = func(bool) (*image.RGBA, error) {
+	originalCapture := portalCapture
+	stub := func(bool, CaptureOptions) (*image.RGBA, error) {
 		return image.NewRGBA(image.Rect(0, 0, 2, 2)), nil
 	}
-	t.Cleanup(func() { portalScreenshotFn = originalPortal })
+	portalScreenshotFn = stub
+	portalCapture = stub
+	t.Cleanup(func() {
+		portalScreenshotFn = originalPortal
+		portalCapture = originalCapture
+	})
 
 	originalBackend := backend
 	monitorErr := errors.New("monitors offline")
 	backend = fakeBackend{monitorsErr: monitorErr}
 	t.Cleanup(func() { backend = originalBackend })
 
-	if _, err := CaptureScreenshot("primary"); err == nil {
+	if _, err := CaptureScreenshot("primary", CaptureOptions{}); err == nil {
 		t.Fatalf("expected error")
 	} else {
 		if !errors.Is(err, monitorErr) {
@@ -90,7 +102,7 @@ func TestCaptureWindowDetailedListWindowsError(t *testing.T) {
 	backend = fakeBackend{windowsErr: windowsErr}
 	t.Cleanup(func() { backend = originalBackend })
 
-	if _, _, err := CaptureWindowDetailed("foo"); err == nil {
+	if _, _, err := CaptureWindowDetailed("foo", CaptureOptions{}); err == nil {
 		t.Fatalf("expected error")
 	} else {
 		if !errors.Is(err, windowsErr) {
