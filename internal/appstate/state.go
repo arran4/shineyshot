@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/example/shineyshot/internal/capture"
 	"github.com/example/shineyshot/internal/clipboard"
+	"github.com/example/shineyshot/internal/render"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
@@ -29,12 +30,15 @@ import (
 
 // AppState holds application configuration for the UI.
 type AppState struct {
-	Image    *image.RGBA
-	Output   string
-	ColorIdx int
-	WidthIdx int
-	Mode     Mode
-	Title    string
+	Image                *image.RGBA
+	Output               string
+	ColorIdx             int
+	WidthIdx             int
+	Mode                 Mode
+	Title                string
+	ShadowDefaults       render.ShadowOptions
+	InitialShadowApplied bool
+	InitialShadowOffset  image.Point
 
 	updateCh    chan struct{}
 	sendControl func(controlEvent)
@@ -71,6 +75,34 @@ func WithMode(mode Mode) Option { return func(a *AppState) { a.Mode = mode } }
 // WithTitle sets the window title displayed in the UI.
 func WithTitle(title string) Option { return func(a *AppState) { a.Title = title } }
 
+// WithShadowDefaults configures the drop shadow parameters used by the toolbar action.
+func WithShadowDefaults(opts render.ShadowOptions) Option {
+	return func(a *AppState) { a.ShadowDefaults = normalizeShadowOptions(opts) }
+}
+
+// WithInitialShadowApplied marks the starting tab as already having a shadow applied.
+func WithInitialShadowApplied(applied bool) Option {
+	return func(a *AppState) { a.InitialShadowApplied = applied }
+}
+
+// WithInitialShadowOffset primes the canvas offset when the initial image already contains a shadow.
+func WithInitialShadowOffset(offset image.Point) Option {
+	return func(a *AppState) { a.InitialShadowOffset = offset }
+}
+
+func normalizeShadowOptions(opts render.ShadowOptions) render.ShadowOptions {
+	if opts.Radius < 0 {
+		opts.Radius = 0
+	}
+	if opts.Opacity < 0 {
+		opts.Opacity = 0
+	}
+	if opts.Opacity > 1 {
+		opts.Opacity = 1
+	}
+	return opts
+}
+
 // WithSettingsListener registers a callback for when drawing settings change.
 func WithSettingsListener(fn func(colorIdx, widthIdx int)) Option {
 	return func(a *AppState) { a.settingsFn = fn }
@@ -82,16 +114,18 @@ func WithOnClose(fn func()) Option { return func(a *AppState) { a.onClose = fn }
 // New creates an AppState with the provided options.
 func New(opts ...Option) *AppState {
 	a := &AppState{
-		ColorIdx: defaultColorIndex,
-		WidthIdx: defaultWidthIndex,
-		Mode:     ModeAnnotate,
-		updateCh: make(chan struct{}, 1),
+		ColorIdx:       defaultColorIndex,
+		WidthIdx:       defaultWidthIndex,
+		Mode:           ModeAnnotate,
+		updateCh:       make(chan struct{}, 1),
+		ShadowDefaults: render.DefaultShadowOptions(),
 	}
 	for _, o := range opts {
 		o(a)
 	}
 	a.ColorIdx = clampColorIndex(a.ColorIdx)
 	a.WidthIdx = clampWidthIndex(a.WidthIdx)
+	a.ShadowDefaults = normalizeShadowOptions(a.ShadowDefaults)
 	if a.Title == "" {
 		a.Title = ProgramTitle
 	}
@@ -307,7 +341,7 @@ func (a *AppState) Main(s screen.Screen) {
 	if icon := toolbarIconImage(); icon != nil {
 		max += icon.Bounds().Dx() + 4
 	}
-	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "H:Num", "T:Text"}
+	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "H:Num", "T:Text", "$:Shadow"}
 	for _, lbl := range toolLabels {
 		w := d.MeasureString(lbl).Ceil() + 8
 		if w > max {
@@ -345,7 +379,15 @@ func (a *AppState) Main(s screen.Screen) {
 
 	a.setControlSender(func(ev controlEvent) { w.Send(ev) })
 
-	tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: widthIdx}}
+	tabs := []Tab{{
+		Image:         rgba,
+		Title:         "1",
+		Offset:        a.InitialShadowOffset,
+		Zoom:          1,
+		NextNumber:    1,
+		WidthIdx:      widthIdx,
+		ShadowApplied: a.InitialShadowApplied,
+	}}
 	current := 0
 
 	var active actionType
@@ -397,6 +439,7 @@ func (a *AppState) Main(s screen.Screen) {
 	keyboardAction = map[KeyShortcut]string{}
 
 	actions := map[string]func(){}
+	var applyShadow func()
 
 	register := func(name string, keys KeyboardShortcuts, fn func()) {
 		actions[name] = fn
@@ -464,6 +507,33 @@ func (a *AppState) Main(s screen.Screen) {
 			})
 		}
 
+		applyShadow = func() {
+			if !annotationEnabled {
+				return
+			}
+			tab := &tabs[current]
+			if tab.ShadowApplied {
+				infoToast("shadow already applied to this tab")
+				return
+			}
+			opts := a.ShadowDefaults
+			if opts.Opacity <= 0 {
+				infoToast("shadow opacity is zero; adjust the defaults to enable it")
+				return
+			}
+			res := render.ApplyShadow(tab.Image, opts)
+			if res.Image == nil || res.Image == tab.Image {
+				infoToast("shadow already applied")
+				return
+			}
+			tab.Image = res.Image
+			tab.Offset = tab.Offset.Add(image.Pt(-res.Offset.X, -res.Offset.Y))
+			tab.ShadowApplied = true
+			a.NotifyImageChanged()
+			w.Send(paint.Event{})
+			infoToast("shadow added")
+		}
+
 		registerCommonActions := func() {
 			registerCopy()
 			registerSave()
@@ -506,6 +576,7 @@ func (a *AppState) Main(s screen.Screen) {
 			{Button: &ToolButton{label: "X:Rect", tool: ToolRect, atype: actionDraw}},
 			{Button: &ToolButton{label: "H:Num", tool: ToolNumber, atype: actionDraw}},
 			{Button: &ToolButton{label: "T:Text", tool: ToolText, atype: actionNone}},
+			{Button: &ToolButton{label: "$:Shadow", tool: ToolShadow, atype: actionNone}},
 		}
 		for _, cb := range toolButtons {
 			tb, ok := cb.Button.(*ToolButton)
@@ -514,6 +585,12 @@ func (a *AppState) Main(s screen.Screen) {
 			}
 			t := tb
 			tb.onSelect = func() {
+				if t.tool == ToolShadow {
+					if applyShadow != nil {
+						applyShadow()
+					}
+					return
+				}
 				tool = t.tool
 				active = actionNone
 			}
@@ -521,13 +598,30 @@ func (a *AppState) Main(s screen.Screen) {
 
 		registerCommonActions()
 
+		register("shadow", shortcutList{
+			{Rune: '$'},
+			{Rune: -1, Code: key.Code4, Modifiers: key.ModShift},
+		}, func() {
+			if applyShadow != nil {
+				applyShadow()
+			}
+		})
+
 		register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
 			img, err := capture.CaptureScreenshot("", capture.CaptureOptions{})
 			if err != nil {
 				errorToast("capture failed: %v", err)
 				return
 			}
-			tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
+			tabs = append(tabs, Tab{
+				Image:         img,
+				Title:         fmt.Sprintf("%d", len(tabs)+1),
+				Offset:        image.Point{},
+				Zoom:          1,
+				NextNumber:    1,
+				WidthIdx:      a.WidthIdx,
+				ShadowApplied: a.InitialShadowApplied,
+			})
 			current = len(tabs) - 1
 			tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
 			infoToast("captured screenshot")
@@ -536,7 +630,15 @@ func (a *AppState) Main(s screen.Screen) {
 		register("dup", shortcutList{{Rune: 'u', Modifiers: key.ModControl}}, func() {
 			dup := image.NewRGBA(tabs[current].Image.Bounds())
 			draw.Draw(dup, dup.Bounds(), tabs[current].Image, image.Point{}, draw.Src)
-			tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx})
+			tabs = append(tabs, Tab{
+				Image:         dup,
+				Title:         fmt.Sprintf("%d", len(tabs)+1),
+				Offset:        tabs[current].Offset,
+				Zoom:          tabs[current].Zoom,
+				NextNumber:    tabs[current].NextNumber,
+				WidthIdx:      tabs[current].WidthIdx,
+				ShadowApplied: tabs[current].ShadowApplied,
+			})
 			current = len(tabs) - 1
 		})
 
@@ -548,7 +650,15 @@ func (a *AppState) Main(s screen.Screen) {
 			}
 			rgba := image.NewRGBA(img.Bounds())
 			draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-			tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
+			tabs = append(tabs, Tab{
+				Image:         rgba,
+				Title:         fmt.Sprintf("%d", len(tabs)+1),
+				Offset:        image.Point{},
+				Zoom:          1,
+				NextNumber:    1,
+				WidthIdx:      a.WidthIdx,
+				ShadowApplied: a.InitialShadowApplied,
+			})
 			current = len(tabs) - 1
 			infoToast("pasted new tab")
 		})
@@ -1255,6 +1365,10 @@ func (a *AppState) Main(s screen.Screen) {
 					tool = ToolNumber
 					active = actionNone
 					w.Send(paint.Event{})
+				case '$':
+					if applyShadow != nil {
+						applyShadow()
+					}
 				case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 					if e.Modifiers&key.ModControl != 0 {
 						idx := int(e.Rune - '1')
@@ -1303,6 +1417,10 @@ func (a *AppState) Main(s screen.Screen) {
 						if tool == ToolMove {
 							tabs[current].Offset.Y += 10
 							w.Send(paint.Event{})
+						}
+					case key.Code4:
+						if e.Modifiers&key.ModShift != 0 && applyShadow != nil {
+							applyShadow()
 						}
 					}
 				}

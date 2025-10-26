@@ -53,6 +53,7 @@ const (
 	ToolRect
 	ToolNumber
 	ToolText
+	ToolShadow
 )
 
 // Mode controls the available interactions in the UI.
@@ -74,10 +75,11 @@ type Tab struct {
 	Image *image.RGBA
 	Title string
 	// Offset is stored in image coordinates so it is independent of zoom.
-	Offset     image.Point
-	Zoom       float64
-	NextNumber int
-	WidthIdx   int
+	Offset        image.Point
+	Zoom          float64
+	NextNumber    int
+	WidthIdx      int
+	ShadowApplied bool
 }
 
 // TabSummary provides identifying information for an open annotation tab.
@@ -773,7 +775,7 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	}
 }
 
-func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, annotationEnabled bool) {
+func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, annotationEnabled bool, shadowUsed bool) {
 	y := tabHeight
 	for i, cb := range toolButtons {
 		r := image.Rect(0, y, toolbarWidth, y+24)
@@ -781,7 +783,9 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, an
 		state := StateDefault
 		switch b := cb.Button.(type) {
 		case *ToolButton:
-			if b.tool == tool {
+			if b.tool == ToolShadow && shadowUsed {
+				state = StatePressed
+			} else if b.tool == tool {
 				state = StatePressed
 			} else if i == hoverTool {
 				state = StateHover
@@ -1244,7 +1248,7 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 	}
 
 	drawTabs(b.RGBA(), st.tabs, st.current, st.title)
-	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx, st.annotationEnabled)
+	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx, st.annotationEnabled, st.tabs[st.current].ShadowApplied)
 	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut, st.annotationEnabled)
 
 	if ctx.Err() != nil {
