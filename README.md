@@ -6,6 +6,37 @@
 
 ShineyShot brings capture and annotation tools together across four complementary modes so workflows can move from a quick markup to a fully scripted pipeline without switching apps. Updated screencaps for every workflow will land soon.
 
+## Installation
+
+### Prerequisites
+
+ShineyShot relies on CGO-backed bindings for GLFW and `golang.org/x/mobile`. Install the system packages before compiling:
+
+- **Linux (Debian/Ubuntu):** `sudo apt-get install build-essential pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`.
+- **Linux (Fedora):** `sudo dnf install @development-tools pkgconfig mesa-libGL-devel libX11-devel libXrandr-devel wayland-devel libxkbcommon-devel`.
+- **macOS:** Ensure the Xcode Command Line Tools are installed (`xcode-select --install`) and install GLFW via Homebrew (`brew install glfw`).
+
+### Prebuilt releases
+
+Download signed artifacts for Linux from the [latest GitHub release](https://github.com/arran4/shineyshot/releases/latest). GoReleaser publishes:
+
+- `.tar.gz` archives for `linux` on `amd64`, `386`, `arm64`, and ARMv6/v7.
+- Native packages in `.deb`, `.rpm`, `.apk`, and Arch Linux (`.pkg.tar.zst`) formats.
+
+Install the package format that matches your distribution, or extract the archive and place the `shineyshot` binary somewhere on your `PATH`.
+
+### Build and install
+
+Clone the repository or update to the desired revision, then run the following commands from the project root:
+
+```bash
+go mod download
+go build ./cmd/shineyshot
+go install ./cmd/shineyshot
+```
+
+The final command places the compiled binary in `$(go env GOBIN)` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) so it is available on your `PATH`.
+
 ## UI Mode
 
 Launch the graphical editor from any environment and control how it starts up with command-line flags.
@@ -206,6 +237,14 @@ rectangle drawn
 ```
 
 Launch the shell with `--include-decorations` or `--include-cursor` to keep those preferences active for every capture command in the session.
+
+## Testing
+
+First-time runs may spend additional time downloading Go modules before executing. Once dependencies are cached, run all checks with:
+
+```bash
+go test ./...
+```
 
 ## License
 
