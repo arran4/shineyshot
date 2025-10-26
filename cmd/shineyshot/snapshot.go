@@ -17,11 +17,13 @@ import (
 )
 
 type snapshotCmd struct {
-	output   string
-	stdout   bool
-	mode     string
-	selector string
-	rect     string
+	output             string
+	stdout             bool
+	mode               string
+	selector           string
+	rect               string
+	includeDecorations bool
+	includeCursor      bool
 	*root
 	fs *flag.FlagSet
 }
@@ -38,6 +40,8 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	fs.BoolVar(&s.stdout, "stdout", false, "write PNG data to stdout")
 	fs.StringVar(&s.selector, "select", "", "selector for screen or window capture")
 	fs.StringVar(&s.rect, "rect", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
+	fs.BoolVar(&s.includeDecorations, "include-decorations", false, "request window decorations when capturing windows")
+	fs.BoolVar(&s.includeCursor, "include-cursor", false, "embed the cursor in captures when supported")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -106,22 +110,30 @@ func (s *snapshotCmd) Run() error {
 }
 
 func (s *snapshotCmd) capture() (*image.RGBA, error) {
+	opts := s.captureOptions()
 	switch s.mode {
 	case "screen":
-		return capture.CaptureScreenshot(s.selector)
+		return capture.CaptureScreenshot(s.selector, opts)
 	case "window":
-		return capture.CaptureWindow(s.selector)
+		return capture.CaptureWindow(s.selector, opts)
 	case "region":
 		if strings.TrimSpace(s.rect) == "" {
-			return capture.CaptureRegion()
+			return capture.CaptureRegion(opts)
 		}
 		rect, err := parseRect(s.rect)
 		if err != nil {
 			return nil, err
 		}
-		return capture.CaptureRegionRect(rect)
+		return capture.CaptureRegionRect(rect, opts)
 	default:
 		return nil, errors.New("unsupported capture mode")
+	}
+}
+
+func (s *snapshotCmd) captureOptions() capture.CaptureOptions {
+	return capture.CaptureOptions{
+		IncludeDecorations: s.includeDecorations,
+		IncludeCursor:      s.includeCursor,
 	}
 }
 

@@ -22,6 +22,8 @@ func parseInteractiveCmd(args []string, r *root) (*interactiveCLI, error) {
 	fs.StringVar(&cli.sessionName, "socket", "", "background session name (deprecated)")
 	fs.StringVar(&cli.socketDir, "dir", "", "directory that stores shineyshot sockets")
 	fs.StringVar(&cli.socketDir, "socket-dir", "", "directory that stores shineyshot sockets (deprecated)")
+	fs.BoolVar(&cli.includeDecorations, "include-decorations", false, "request window decorations when capturing windows")
+	fs.BoolVar(&cli.includeCursor, "include-cursor", false, "embed the cursor in captures when supported")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
