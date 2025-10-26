@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
+	"github.com/example/shineyshot/internal/capture"
 )
 
 // annotateCmd represents the annotate subcommand.
@@ -102,7 +103,7 @@ func (a *annotateCmd) Run() error {
 				rectSpec = a.selector
 			}
 			if strings.TrimSpace(rectSpec) == "" {
-        img, err = captureRegionFn(opts)
+				img, err = captureRegionFn(opts)
 			} else {
 				var rect image.Rectangle
 				rect, err = parseRect(rectSpec)

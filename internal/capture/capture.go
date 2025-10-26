@@ -17,12 +17,12 @@ type CaptureOptions struct {
 	IncludeCursor bool
 }
 
-var portalCapture = portalScreenshot
+var portalScreenshotFn = portalScreenshot
 
 // CaptureScreenshot captures the desktop. When a display selector is provided it will
 // crop the result to the matching monitor.
 func CaptureScreenshot(display string, opts CaptureOptions) (*image.RGBA, error) {
-	img, err := portalCapture(false, opts)
+	img, err := portalScreenshotFn(false, opts)
 	if err != nil {
 		return nil, fmt.Errorf("capture screenshot via portal: %w", err)
 	}
@@ -86,7 +86,7 @@ func CaptureWindow(selector string, opts CaptureOptions) (*image.RGBA, error) {
 
 // CaptureRegion uses the portal to allow the user to select a region interactively.
 func CaptureRegion(opts CaptureOptions) (*image.RGBA, error) {
-	img, err := portalScreenshotFn(true, opts
+	img, err := portalScreenshotFn(true, opts)
 	if err != nil {
 		return nil, fmt.Errorf("capture region: %w", err)
 	}
