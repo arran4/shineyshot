@@ -24,3 +24,5 @@ func (unsupportedBackend) ListWindows() ([]WindowInfo, error) {
 func (unsupportedBackend) CaptureWindowImage(uint32) (*image.RGBA, error) {
 	return nil, fmt.Errorf("window capture is not supported on this platform")
 }
+
+func runningOnWayland() bool { return false }

@@ -18,16 +18,33 @@ type CaptureOptions struct {
 }
 
 var (
-	portalCapture      = portalScreenshot
-	portalScreenshotFn = portalCapture
+	portalCapture        = portalScreenshot
+	portalScreenshotFn   = portalCapture
+	pipewireCapture      = pipewireScreenshot
+	pipewireScreenshotFn = pipewireCapture
 )
+
+func screenshot(interactive bool, opts CaptureOptions) (*image.RGBA, error) {
+	img, err := portalScreenshotFn(interactive, opts)
+	if err == nil {
+		return img, nil
+	}
+	if interactive || !isPortalUnsupportedError(err) {
+		return nil, err
+	}
+	fallback, fallbackErr := pipewireScreenshotFn(opts)
+	if fallbackErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("pipewire fallback: %w", fallbackErr))
+	}
+	return fallback, nil
+}
 
 // CaptureScreenshot captures the desktop. When a display selector is provided it will
 // crop the result to the matching monitor.
 func CaptureScreenshot(display string, opts CaptureOptions) (*image.RGBA, error) {
-	img, err := portalScreenshotFn(false, opts)
+	img, err := screenshot(false, opts)
 	if err != nil {
-		return nil, fmt.Errorf("capture screenshot via portal: %w", err)
+		return nil, fmt.Errorf("capture screenshot: %w", err)
 	}
 	if display == "" {
 		return img, nil
@@ -63,14 +80,22 @@ func CaptureWindowDetailed(selector string, opts CaptureOptions) (*image.RGBA, W
 	if info.Rect.Empty() {
 		return nil, WindowInfo{}, fmt.Errorf("window has empty geometry")
 	}
-	img, directErr := captureWindowImage(info.ID)
-	if directErr == nil {
-		return img, info, nil
+	var (
+		img       *image.RGBA
+		directErr error
+	)
+	if !runningOnWayland() {
+		img, directErr = captureWindowImage(info.ID)
+		if directErr == nil {
+			return img, info, nil
+		}
+		directErr = fmt.Errorf("direct window capture: %w", directErr)
+	} else {
+		directErr = fmt.Errorf("direct window capture: unsupported on Wayland session")
 	}
-	directErr = fmt.Errorf("direct window capture: %w", directErr)
-	shot, err := portalScreenshotFn(false, opts)
+	shot, err := screenshot(false, opts)
 	if err != nil {
-		fallbackErr := fmt.Errorf("fallback portal screenshot: %w", err)
+		fallbackErr := fmt.Errorf("fallback screenshot: %w", err)
 		return nil, WindowInfo{}, fmt.Errorf("window capture failed: %w", errors.Join(directErr, fallbackErr))
 	}
 	img, err = cropToRect(shot, info.Rect)
@@ -89,7 +114,7 @@ func CaptureWindow(selector string, opts CaptureOptions) (*image.RGBA, error) {
 
 // CaptureRegion uses the portal to allow the user to select a region interactively.
 func CaptureRegion(opts CaptureOptions) (*image.RGBA, error) {
-	img, err := portalScreenshotFn(true, opts)
+	img, err := screenshot(true, opts)
 	if err != nil {
 		return nil, fmt.Errorf("capture region: %w", err)
 	}
@@ -101,9 +126,9 @@ func CaptureRegionRect(rect image.Rectangle, opts CaptureOptions) (*image.RGBA, 
 	if rect.Empty() {
 		return nil, fmt.Errorf("region is empty")
 	}
-	shot, err := portalScreenshotFn(false, opts)
+	shot, err := screenshot(false, opts)
 	if err != nil {
-		return nil, fmt.Errorf("capture screenshot via portal: %w", err)
+		return nil, fmt.Errorf("capture screenshot: %w", err)
 	}
 	img, err := cropToRect(shot, rect)
 	if err != nil {
