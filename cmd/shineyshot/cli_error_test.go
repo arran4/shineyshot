@@ -5,12 +5,14 @@ import (
 	"image"
 	"strings"
 	"testing"
+
+	"github.com/example/shineyshot/internal/capture"
 )
 
 func TestSnapshotRunCaptureError(t *testing.T) {
 	original := captureScreenshotFn
 	sentinel := errors.New("boom")
-	captureScreenshotFn = func(string) (*image.RGBA, error) { return nil, sentinel }
+	captureScreenshotFn = func(string, capture.CaptureOptions) (*image.RGBA, error) { return nil, sentinel }
 	t.Cleanup(func() { captureScreenshotFn = original })
 
 	cmd := &snapshotCmd{mode: "screen", stdout: true}
@@ -29,7 +31,7 @@ func TestSnapshotRunCaptureError(t *testing.T) {
 func TestAnnotateRunCaptureError(t *testing.T) {
 	original := captureScreenshotFn
 	sentinel := errors.New("denied")
-	captureScreenshotFn = func(string) (*image.RGBA, error) { return nil, sentinel }
+	captureScreenshotFn = func(string, capture.CaptureOptions) (*image.RGBA, error) { return nil, sentinel }
 	t.Cleanup(func() { captureScreenshotFn = original })
 
 	cmd := &annotateCmd{action: "capture", target: "screen"}

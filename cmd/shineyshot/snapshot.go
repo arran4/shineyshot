@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/example/shineyshot/internal/capture"
 )
 
 type snapshotCmd struct {
