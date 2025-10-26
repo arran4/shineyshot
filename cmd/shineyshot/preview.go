@@ -6,6 +6,7 @@ import (
 	"image/draw"
 	"image/png"
 	"os"
+	"path/filepath"
 
 	"github.com/example/shineyshot/internal/appstate"
 )
@@ -46,7 +47,18 @@ func (p *previewCmd) Run() error {
 	}
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-	st := appstate.New(appstate.WithImage(rgba))
+	fileName := ""
+	if p.file != "" {
+		fileName = filepath.Base(p.file)
+	}
+	st := appstate.New(
+		appstate.WithImage(rgba),
+		appstate.WithTitle(windowTitle(titleOptions{
+			File: fileName,
+			Mode: "Preview",
+			Tab:  "Tab 1",
+		})),
+	)
 	st.Run()
 	return nil
 }

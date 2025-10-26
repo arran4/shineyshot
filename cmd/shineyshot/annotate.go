@@ -6,6 +6,7 @@ import (
 	"image/draw"
 	"image/png"
 	"os"
+	"path/filepath"
 
 	"github.com/example/shineyshot/internal/appstate"
 	"github.com/example/shineyshot/internal/capture"
@@ -79,7 +80,26 @@ func (a *annotateCmd) Run() error {
 	default:
 		return &UsageError{of: a}
 	}
-	st := appstate.New(appstate.WithImage(img), appstate.WithOutput(a.output))
+	detail := ""
+	fileName := ""
+	if a.mode == "open-file" && a.file != "" {
+		fileName = filepath.Base(a.file)
+	}
+	if a.output != "" {
+		detail = filepath.Base(a.output)
+	}
+	lastSaved := detail
+	st := appstate.New(
+		appstate.WithImage(img),
+		appstate.WithOutput(a.output),
+		appstate.WithTitle(windowTitle(titleOptions{
+			File:      fileName,
+			Mode:      "Annotate",
+			Detail:    detail,
+			Tab:       "Tab 1",
+			LastSaved: lastSaved,
+		})),
+	)
 	st.Run()
 	return nil
 }
