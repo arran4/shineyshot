@@ -1172,7 +1172,6 @@ type paintState struct {
 	messageUntil      time.Time
 	handleShortcut    func(string)
 	annotationEnabled bool
-	handleShortcut    func(string)
 	title             string
 }
 
@@ -1225,7 +1224,7 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 		return
 	}
 
-	drawTabs(b.RGBA(), st.tabs, st.current)
+	drawTabs(b.RGBA(), st.tabs, st.current, st.title)
 	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx, st.annotationEnabled)
 	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut, st.annotationEnabled)
 
