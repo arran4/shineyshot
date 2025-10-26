@@ -98,6 +98,12 @@ func (r *root) Run(args []string) error {
 		cmd, err = parseInteractiveCmd(subArgs, r)
 	case "background":
 		cmd, err = parseBackgroundCmd(subArgs, r)
+	case "windows":
+		cmd, err = parseWindowsCmd(subArgs, r)
+	case "colors":
+		cmd, err = parseColorsCmd(subArgs, r)
+	case "widths":
+		cmd, err = parseWidthsCmd(subArgs, r)
 	case "version":
 		cmd = &versionCmd{r: r}
 	default:

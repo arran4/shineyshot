@@ -1,0 +1,3 @@
+Usage: {{.Program}} widths
+Display the available stroke widths for drawing tools.
+{{template "flags" .FlagSet}}

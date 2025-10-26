@@ -1,0 +1,3 @@
+Usage: {{.Program}} windows
+List the available windows along with selectors you can use for captures.
+{{template "flags" .FlagSet}}
