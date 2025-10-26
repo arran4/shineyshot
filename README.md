@@ -240,7 +240,7 @@ Interactive mode. Type 'help' for commands.
 Commands:
   capture screen [DISPLAY]   capture full screen; use 'screens' to list displays
   capture window [SELECTOR]   capture window by selector; defaults to active window; 'windows' lists options
-  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays
+  capture region [SCREEN] X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays
   arrow x0 y0 x1 y1          draw arrow with current stroke
   line x0 y0 x1 y1           draw line with current stroke
   rect x0 y0 x1 y1           draw rectangle with current stroke

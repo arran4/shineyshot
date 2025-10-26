@@ -198,7 +198,7 @@ func (i *interactiveCmd) printHelp() {
 	i.writeln(i.stdout, "Commands:")
 	i.writeln(i.stdout, "  capture screen [DISPLAY]   capture full screen; use 'screens' to list displays")
 	i.writeln(i.stdout, "  capture window [SELECTOR]   capture window by selector; defaults to active window; 'windows' lists options")
-	i.writeln(i.stdout, "  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays")
+	i.writeln(i.stdout, "  capture region [SCREEN] X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays")
 	i.writeln(i.stdout, "  arrow x0 y0 x1 y1          draw arrow with current stroke")
 	i.writeln(i.stdout, "  line x0 y0 x1 y1           draw line with current stroke")
 	i.writeln(i.stdout, "  rect x0 y0 x1 y1           draw rectangle with current stroke")
@@ -308,8 +308,8 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			i.printScreenList()
 			return
 		}
-		if len(params) < 5 {
-			i.writeln(i.stderr, "usage: capture region SCREEN X Y WIDTH HEIGHT")
+		if len(params) < 4 {
+			i.writeln(i.stderr, "usage: capture region [SCREEN] X Y WIDTH HEIGHT")
 			i.printScreenList()
 			return
 		}
@@ -318,13 +318,19 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			i.writeln(i.stderr, mErr)
 			return
 		}
-		monitor, mErr := capture.FindMonitor(monitors, params[0])
+		selector := ""
+		coordArgs := params
+		if len(params) > 4 {
+			selector = params[0]
+			coordArgs = params[1:]
+		}
+		monitor, mErr := capture.FindMonitor(monitors, selector)
 		if mErr != nil {
 			i.writeln(i.stderr, mErr)
 			i.printScreenList()
 			return
 		}
-		coords, cErr := parseInts(params[1:], 4)
+		coords, cErr := parseInts(coordArgs, 4)
 		if cErr != nil {
 			i.writeln(i.stderr, cErr)
 			return
