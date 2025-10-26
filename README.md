@@ -14,7 +14,7 @@ Launch the graphical editor from any environment and control how it starts up wi
 # Open the editor directly on an existing image
 shineyshot annotate -file snapshot.png open
 
-# Capture a window by selector and jump straight into annotation
+# Capture the active window (or specify a selector) and jump straight into annotation
 shineyshot annotate capture window "Settings Panel"
 
 # Start in capture region mode with a preset rectangle
@@ -60,15 +60,15 @@ ShineyShot talks to the desktop portal and prints Linux-friendly status messages
 sh-5.3$ shineyshot file -file screenshot.png capture screen 0
 saved /home/user/Pictures/screenshot.png
 
-# Capture the currently active portal window
+# Capture the current active window (pass a selector to target another)
 sh-5.3$ shineyshot file -file screenshot.png capture window firefox
 
 # Capture a specific rectangle (x0,y0,x1,y1)
 sh-5.3$ shineyshot file -file screenshot.png capture region 0,0,640,480
 ```
 
-Provide an optional selector argument—or `-select` for scripts—to target a specific display or window. Supply regions with the
-`-rect` flag or trailing `x0,y0,x1,y1` coordinates.
+Provide an optional selector argument—or `-select` for scripts—to target a specific display or window.
+Window captures fall back to the active window when no selector is provided. Supply regions with the `-rect` flag or trailing `x0,y0,x1,y1` coordinates.
 
 Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
 
@@ -153,7 +153,7 @@ Interactive mode. Type 'help' for commands.
 > help
 Commands:
   capture screen [DISPLAY]   capture full screen; use 'screens' to list displays
-  capture window SELECTOR    capture window by selector; use 'windows' to list options
+  capture window [SELECTOR]   capture window by selector; defaults to active window; 'windows' lists options
   capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays
   arrow x0 y0 x1 y1          draw arrow with current stroke
   line x0 y0 x1 y1           draw line with current stroke

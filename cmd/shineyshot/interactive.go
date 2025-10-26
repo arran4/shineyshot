@@ -195,7 +195,7 @@ func (i *interactiveCmd) executeLine(line string) (bool, error) {
 func (i *interactiveCmd) printHelp() {
 	i.writeln(i.stdout, "Commands:")
 	i.writeln(i.stdout, "  capture screen [DISPLAY]   capture full screen; use 'screens' to list displays")
-	i.writeln(i.stdout, "  capture window SELECTOR    capture window by selector; use 'windows' to list options")
+	i.writeln(i.stdout, "  capture window [SELECTOR]   capture window by selector; defaults to active window; 'windows' lists options")
 	i.writeln(i.stdout, "  capture region SCREEN X Y WIDTH HEIGHT   capture region on a screen; 'screens' lists displays")
 	i.writeln(i.stdout, "  arrow x0 y0 x1 y1          draw arrow with current stroke")
 	i.writeln(i.stdout, "  line x0 y0 x1 y1           draw line with current stroke")

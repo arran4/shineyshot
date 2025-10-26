@@ -25,7 +25,7 @@ var (
 // CaptureScreenshot captures the desktop. When a display selector is provided it will
 // crop the result to the matching monitor.
 func CaptureScreenshot(display string, opts CaptureOptions) (*image.RGBA, error) {
-	img, err := portalCapture(false, opts)
+	img, err := portalScreenshotFn(false, opts)
 	if err != nil {
 		return nil, fmt.Errorf("capture screenshot via portal: %w", err)
 	}

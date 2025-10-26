@@ -4,7 +4,7 @@ Starts an interactive shell. Use immediate mode for scripts, e.g.:
 
 Available commands:
   capture screen [DISPLAY]   capture a full screen screenshot ('screens' shows displays)
-  capture window SELECTOR    capture a window by selector ('windows' shows selectors)
+  capture window [SELECTOR]   capture a window by selector (defaults to active window; 'windows' shows selectors)
   capture region SCREEN X Y WIDTH HEIGHT   capture a region relative to a screen ('screens' shows displays)
   arrow x0 y0 x1 y1          draw an arrow with the current stroke
   line x0 y0 x1 y1           draw a line with the current stroke

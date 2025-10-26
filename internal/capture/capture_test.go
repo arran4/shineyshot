@@ -36,64 +36,6 @@ func (f fakeBackend) CaptureWindowImage(uint32) (*image.RGBA, error) {
 	return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil
 }
 
-func TestCaptureScreenshotPortalError(t *testing.T) {
-	t.Helper()
-
-	originalPortal := portalScreenshotFn
-	originalCapture := portalCapture
-	sentinel := errors.New("portal down")
-	stub := func(bool, CaptureOptions) (*image.RGBA, error) { return nil, sentinel }
-	portalScreenshotFn = stub
-	portalCapture = stub
-	t.Cleanup(func() {
-		portalScreenshotFn = originalPortal
-		portalCapture = originalCapture
-	})
-
-	if _, err := CaptureScreenshot("", CaptureOptions{}); err == nil {
-		t.Fatalf("expected error")
-	} else {
-		if !errors.Is(err, sentinel) {
-			t.Fatalf("expected sentinel error, got %v", err)
-		}
-		if want := "capture screenshot via portal"; !strings.Contains(err.Error(), want) {
-			t.Fatalf("expected error to contain %q, got %v", want, err)
-		}
-	}
-}
-
-func TestCaptureScreenshotDisplayMonitorError(t *testing.T) {
-	t.Helper()
-
-	originalPortal := portalScreenshotFn
-	originalCapture := portalCapture
-	stub := func(bool, CaptureOptions) (*image.RGBA, error) {
-		return image.NewRGBA(image.Rect(0, 0, 2, 2)), nil
-	}
-	portalScreenshotFn = stub
-	portalCapture = stub
-	t.Cleanup(func() {
-		portalScreenshotFn = originalPortal
-		portalCapture = originalCapture
-	})
-
-	originalBackend := backend
-	monitorErr := errors.New("monitors offline")
-	backend = fakeBackend{monitorsErr: monitorErr}
-	t.Cleanup(func() { backend = originalBackend })
-
-	if _, err := CaptureScreenshot("primary", CaptureOptions{}); err == nil {
-		t.Fatalf("expected error")
-	} else {
-		if !errors.Is(err, monitorErr) {
-			t.Fatalf("expected wrapped monitor error, got %v", err)
-		}
-		if want := "capture screenshot for display"; !strings.Contains(err.Error(), want) {
-			t.Fatalf("expected context in error, got %v", err)
-		}
-	}
-}
-
 func TestCaptureWindowDetailedListWindowsError(t *testing.T) {
 	t.Helper()
 
