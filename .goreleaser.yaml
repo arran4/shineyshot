@@ -41,6 +41,7 @@ archives:
       #   format: zip
     files:
       - README.md
+      - docs/shineyshot.1
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "linux" }}Linux{{ else }}{{ title .Os }}{{ end }}_{{- if eq .Arch "386" }}i386{{ else if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{- with .Arm }}v{{ . }}{{ end }}'
 
 checksum:
@@ -63,6 +64,9 @@ nfpms:
       - src: README.md
         dst: /usr/share/doc/shineyshot/README.md
         type: doc
+      - src: docs/shineyshot.1
+        dst: /usr/share/man/man1/shineyshot.1
+        type: man
       - src: assets/shineyshot.desktop
         dst: /usr/share/applications/shineyshot.desktop
       - src: assets/icons/shineyshot.svg
