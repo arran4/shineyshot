@@ -80,19 +80,11 @@ func CaptureWindowDetailed(selector string, opts CaptureOptions) (*image.RGBA, W
 	if info.Rect.Empty() {
 		return nil, WindowInfo{}, fmt.Errorf("window has empty geometry")
 	}
-	var (
-		img       *image.RGBA
-		directErr error
-	)
-	if !runningOnWayland() {
-		img, directErr = captureWindowImage(info.ID)
-		if directErr == nil {
-			return img, info, nil
-		}
-		directErr = fmt.Errorf("direct window capture: %w", directErr)
-	} else {
-		directErr = fmt.Errorf("direct window capture: unsupported on Wayland session")
+	img, err := captureWindowImage(info.ID)
+	if err == nil {
+		return img, info, nil
 	}
+	directErr := fmt.Errorf("direct window capture: %w", err)
 	shot, err := screenshot(false, opts)
 	if err != nil {
 		fallbackErr := fmt.Errorf("fallback screenshot: %w", err)
