@@ -72,6 +72,8 @@ Provide an optional selector argument—or `-select` for scripts—to target a s
 
 Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
 
+When the compositor supports it, use `--include-decorations` to request window frames and `--include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
+
 ### Draw quick markup
 
 Apply lightweight annotations to an existing image. Lines and arrows expand the canvas as needed so their endpoints stay visible.
@@ -196,6 +198,8 @@ sh-5.3$ shineyshot interactive -e "capture screen" -e "rect 10 10 200 200"
 captured screen current display
 rectangle drawn
 ```
+
+Launch the shell with `--include-decorations` or `--include-cursor` to keep those preferences active for every capture command in the session.
 
 ## License
 

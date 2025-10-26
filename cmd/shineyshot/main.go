@@ -4,10 +4,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image"
 	"os"
 	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
+	"github.com/example/shineyshot/internal/notify"
 )
 
 var (
@@ -19,9 +21,13 @@ var (
 type runnable interface{ Run() error }
 
 type root struct {
-	fs      *flag.FlagSet
-	program string
-	state   *appstate.AppState
+	fs            *flag.FlagSet
+	program       string
+	state         *appstate.AppState
+	notifier      *notify.Notifier
+	captureAlerts bool
+	saveAlerts    bool
+	copyAlerts    bool
 }
 
 func (r *root) Program() string {
@@ -30,7 +36,14 @@ func (r *root) Program() string {
 
 func (r *root) subcommand(name string) *root {
 	program := strings.TrimSpace(strings.Join([]string{r.program, name}, " "))
-	return &root{program: program, state: r.state}
+	return &root{
+		program:       program,
+		state:         r.state,
+		notifier:      r.notifier,
+		captureAlerts: r.captureAlerts,
+		saveAlerts:    r.saveAlerts,
+		copyAlerts:    r.copyAlerts,
+	}
 }
 
 func (r *root) FlagSet() *flag.FlagSet {
@@ -38,7 +51,15 @@ func (r *root) FlagSet() *flag.FlagSet {
 }
 
 func newRoot() *root {
-	r := &root{fs: flag.NewFlagSet("shineyshot", flag.ExitOnError), program: "shineyshot"}
+	prefs := notify.LoadPreferences()
+	r := &root{
+		fs:       flag.NewFlagSet("shineyshot", flag.ExitOnError),
+		program:  "shineyshot",
+		notifier: notify.New(prefs),
+	}
+	r.fs.BoolVar(&r.captureAlerts, "notify-capture", false, "show a desktop notification after capturing a screenshot")
+	r.fs.BoolVar(&r.saveAlerts, "notify-save", false, "show a desktop notification after saving an image")
+	r.fs.BoolVar(&r.copyAlerts, "notify-copy", false, "show a desktop notification after copying to the clipboard")
 	r.fs.Usage = usageFunc(r)
 	return r
 }
@@ -49,6 +70,11 @@ func (r *root) Run(args []string) error {
 	}
 	if r.fs.NArg() < 1 {
 		return &UsageError{of: r}
+	}
+	if r.notifier != nil {
+		r.notifier.Enable(notify.EventCapture, r.captureAlerts)
+		r.notifier.Enable(notify.EventSave, r.saveAlerts)
+		r.notifier.Enable(notify.EventCopy, r.copyAlerts)
 	}
 	cmdName := r.fs.Arg(0)
 	subArgs := r.fs.Args()[1:]
@@ -75,12 +101,15 @@ func (r *root) Run(args []string) error {
 	case "version":
 		cmd = &versionCmd{r: r}
 	default:
-		return &UsageError{of: r}
+		err = &UsageError{of: r}
 	}
 	if err != nil {
 		return err
 	}
-	return cmd.Run()
+	if runErr := cmd.Run(); runErr != nil {
+		return runErr
+	}
+	return nil
 }
 
 func main() {
@@ -94,4 +123,25 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func (r *root) notifyCapture(detail string, img image.Image) {
+	if r == nil || r.notifier == nil {
+		return
+	}
+	r.notifier.Capture(detail, img)
+}
+
+func (r *root) notifySave(path string) {
+	if r == nil || r.notifier == nil {
+		return
+	}
+	r.notifier.Save(path)
+}
+
+func (r *root) notifyCopy(detail string) {
+	if r == nil || r.notifier == nil {
+		return
+	}
+	r.notifier.Copy(detail)
 }

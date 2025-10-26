@@ -7,12 +7,22 @@ import (
 	"image/draw"
 )
 
-var portalScreenshotFn = portalScreenshot
+// CaptureOptions describes optional preferences when capturing screenshots.
+type CaptureOptions struct {
+	// IncludeDecorations requests that window captures include decorations when
+	// available. Support depends on the compositor and platform backend.
+	IncludeDecorations bool
+	// IncludeCursor requests that the cursor be embedded into the captured
+	// image. Support depends on the compositor and platform backend.
+	IncludeCursor bool
+}
+
+var portalCapture = portalScreenshot
 
 // CaptureScreenshot captures the desktop. When a display selector is provided it will
 // crop the result to the matching monitor.
-func CaptureScreenshot(display string) (*image.RGBA, error) {
-	img, err := portalScreenshotFn(false)
+func CaptureScreenshot(display string, opts CaptureOptions) (*image.RGBA, error) {
+	img, err := portalCapture(false, opts)
 	if err != nil {
 		return nil, fmt.Errorf("capture screenshot via portal: %w", err)
 	}
@@ -38,7 +48,7 @@ func CaptureScreenshot(display string) (*image.RGBA, error) {
 // both the image and the resolved window metadata. It prefers a direct X11 window
 // capture and falls back to cropping a desktop screenshot if the compositor
 // refuses to provide the pixels.
-func CaptureWindowDetailed(selector string) (*image.RGBA, WindowInfo, error) {
+func CaptureWindowDetailed(selector string, opts CaptureOptions) (*image.RGBA, WindowInfo, error) {
 	windows, err := ListWindows()
 	if err != nil {
 		return nil, WindowInfo{}, fmt.Errorf("capture window %q: %w", selector, err)
@@ -55,7 +65,7 @@ func CaptureWindowDetailed(selector string) (*image.RGBA, WindowInfo, error) {
 		return img, info, nil
 	}
 	directErr = fmt.Errorf("direct window capture: %w", directErr)
-	shot, err := portalScreenshotFn(false)
+	shot, err := portalScreenshotFn(false, opts)
 	if err != nil {
 		fallbackErr := fmt.Errorf("fallback portal screenshot: %w", err)
 		return nil, WindowInfo{}, fmt.Errorf("window capture failed: %w", errors.Join(directErr, fallbackErr))
@@ -69,14 +79,14 @@ func CaptureWindowDetailed(selector string) (*image.RGBA, WindowInfo, error) {
 }
 
 // CaptureWindow captures a single window specified by the selector string.
-func CaptureWindow(selector string) (*image.RGBA, error) {
-	img, _, err := CaptureWindowDetailed(selector)
+func CaptureWindow(selector string, opts CaptureOptions) (*image.RGBA, error) {
+	img, _, err := CaptureWindowDetailed(selector, opts)
 	return img, err
 }
 
 // CaptureRegion uses the portal to allow the user to select a region interactively.
-func CaptureRegion() (*image.RGBA, error) {
-	img, err := portalScreenshotFn(true)
+func CaptureRegion(opts CaptureOptions) (*image.RGBA, error) {
+	img, err := portalScreenshotFn(true, opts
 	if err != nil {
 		return nil, fmt.Errorf("capture region: %w", err)
 	}
@@ -84,11 +94,11 @@ func CaptureRegion() (*image.RGBA, error) {
 }
 
 // CaptureRegionRect captures a specific rectangle in global screen coordinates.
-func CaptureRegionRect(rect image.Rectangle) (*image.RGBA, error) {
+func CaptureRegionRect(rect image.Rectangle, opts CaptureOptions) (*image.RGBA, error) {
 	if rect.Empty() {
 		return nil, fmt.Errorf("region is empty")
 	}
-	shot, err := portalScreenshotFn(false)
+	shot, err := portalScreenshotFn(false, opts)
 	if err != nil {
 		return nil, fmt.Errorf("capture screenshot via portal: %w", err)
 	}

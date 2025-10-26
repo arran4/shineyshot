@@ -44,6 +44,9 @@ type interactiveCmd struct {
 
 	backgroundSession string
 	backgroundDir     string
+
+	includeDecorations bool
+	includeCursor      bool
 }
 
 func (i *interactiveCmd) writeln(w io.Writer, args ...any) {
@@ -98,6 +101,13 @@ func newInteractiveCmd(r *root) *interactiveCmd {
 		stdin:             os.Stdin,
 		stdout:            os.Stdout,
 		stderr:            os.Stderr,
+	}
+}
+
+func (i *interactiveCmd) captureOptions() capture.CaptureOptions {
+	return capture.CaptureOptions{
+		IncludeDecorations: i.includeDecorations,
+		IncludeCursor:      i.includeCursor,
 	}
 }
 
@@ -237,6 +247,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		err    error
 		target string
 	)
+	opts := i.captureOptions()
 	switch mode {
 	case "screen":
 		if len(params) >= 1 && strings.EqualFold(params[0], "list") {
@@ -247,9 +258,9 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		if len(params) >= 1 {
 			display = strings.Join(params, " ")
 		}
-		img, err = capture.CaptureScreenshot(display)
+		img, err = capture.CaptureScreenshot(display, opts)
 		if err != nil && display == "" {
-			img, err = capture.CaptureScreenshot("0")
+			img, err = capture.CaptureScreenshot("0", opts)
 			if err == nil {
 				target = "display 0"
 			}
@@ -278,7 +289,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			selector = strings.Join(params, " ")
 		}
 		var info capture.WindowInfo
-		img, info, err = capture.CaptureWindowDetailed(selector)
+		img, info, err = capture.CaptureWindowDetailed(selector, opts)
 		if err != nil {
 			i.writeln(i.stderr, err)
 			i.printWindowList()
@@ -321,7 +332,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			monitor.Rect.Min.X+coords[0]+coords[2],
 			monitor.Rect.Min.Y+coords[1]+coords[3],
 		)
-		img, err = capture.CaptureRegionRect(rect)
+		img, err = capture.CaptureRegionRect(rect, opts)
 		if err == nil {
 			target = fmt.Sprintf("%s @ %dx%d+%d,%d", formatMonitorName(monitor), coords[2], coords[3], coords[0], coords[1])
 		}
@@ -334,6 +345,13 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		return
 	}
 	i.setImage(img)
+	if i.r != nil {
+		detail := mode
+		if target != "" {
+			detail = fmt.Sprintf("%s %s", mode, target)
+		}
+		i.r.notifyCapture(strings.TrimSpace(detail), img)
+	}
 	if target != "" {
 		i.writef(i.stdout, "captured %s %s\n", mode, target)
 	} else {
@@ -793,6 +811,9 @@ func (i *interactiveCmd) handleCopy() {
 		return
 	}
 	i.writeln(i.stdout, "image copied to clipboard")
+	if i.r != nil {
+		i.r.notifyCopy("image")
+	}
 }
 
 func (i *interactiveCmd) handleCopyName() {
@@ -808,6 +829,9 @@ func (i *interactiveCmd) handleCopyName() {
 		return
 	}
 	i.writeln(i.stdout, "filename copied to clipboard")
+	if i.r != nil {
+		i.r.notifyCopy(output)
+	}
 }
 
 func (i *interactiveCmd) handleBackground(args []string) {
@@ -1130,10 +1154,17 @@ func expandUserPath(p string) (string, error) {
 }
 
 func (i *interactiveCmd) finalizeSave(path string) {
+	display := path
+	if abs, err := filepath.Abs(path); err == nil {
+		display = abs
+	}
 	i.mu.Lock()
-	i.output = path
+	i.output = display
 	i.mu.Unlock()
-	i.writef(i.stdout, "saved %s\n", path)
+	i.writef(i.stdout, "saved %s\n", display)
+	if i.r != nil {
+		i.r.notifySave(display)
+	}
 }
 
 func parseInts(args []string, count int) ([]int, error) {

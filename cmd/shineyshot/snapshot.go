@@ -15,11 +15,13 @@ import (
 )
 
 type snapshotCmd struct {
-	output   string
-	stdout   bool
-	mode     string
-	selector string
-	rect     string
+	output             string
+	stdout             bool
+	mode               string
+	selector           string
+	rect               string
+	includeDecorations bool
+	includeCursor      bool
 	*root
 	fs *flag.FlagSet
 }
@@ -36,6 +38,8 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	fs.BoolVar(&s.stdout, "stdout", false, "write PNG data to stdout")
 	fs.StringVar(&s.selector, "select", "", "selector for screen or window capture")
 	fs.StringVar(&s.rect, "rect", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
+	fs.BoolVar(&s.includeDecorations, "include-decorations", false, "request window decorations when capturing windows")
+	fs.BoolVar(&s.includeCursor, "include-cursor", false, "embed the cursor in captures when supported")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -73,6 +77,10 @@ func (s *snapshotCmd) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to capture %s: %w", s.mode, err)
 	}
+	if s.root != nil {
+		detail := s.describeCapture()
+		s.root.notifyCapture(detail, img)
+	}
 	var w io.Writer
 	if s.stdout {
 		w = os.Stdout
@@ -98,31 +106,64 @@ func (s *snapshotCmd) Run() error {
 		fmt.Fprintln(os.Stderr, "wrote PNG data to stdout")
 		return nil
 	}
+	saved := s.output
 	if abs, err := filepath.Abs(s.output); err == nil {
-		fmt.Fprintf(os.Stderr, "saved %s\n", abs)
-	} else {
-		fmt.Fprintf(os.Stderr, "saved %s\n", s.output)
+		saved = abs
+	}
+	fmt.Fprintf(os.Stderr, "saved %s\n", saved)
+	if s.root != nil {
+		s.root.notifySave(saved)
 	}
 	return nil
 }
 
 func (s *snapshotCmd) capture() (*image.RGBA, error) {
+	opts := s.captureOptions()
 	switch s.mode {
 	case "screen":
-		return captureScreenshotFn(s.selector)
+		return captureScreenshotFn(s.selector, opts)
 	case "window":
-		return captureWindowFn(s.selector)
+		return captureWindowFn(s.selector, opts)
 	case "region":
 		if strings.TrimSpace(s.rect) == "" {
-			return captureRegionFn()
+			return captureRegionFn(opts)
 		}
 		rect, err := parseRect(s.rect)
 		if err != nil {
 			return nil, err
 		}
-		return captureRegionRectFn(rect)
+		return captureRegionRectFn(rect, opts)
 	default:
 		return nil, errors.New("unsupported capture mode")
+	}
+}
+
+func (s *snapshotCmd) describeCapture() string {
+	mode := strings.TrimSpace(s.mode)
+	switch mode {
+	case "screen":
+		if strings.TrimSpace(s.selector) != "" {
+			return fmt.Sprintf("screen %s", s.selector)
+		}
+	case "window":
+		if strings.TrimSpace(s.selector) != "" {
+			return fmt.Sprintf("window %s", s.selector)
+		}
+	case "region":
+		if strings.TrimSpace(s.rect) != "" {
+			return fmt.Sprintf("region %s", s.rect)
+		}
+	}
+	if mode == "" {
+		return "capture"
+	}
+	return mode
+}
+
+func (s *snapshotCmd) captureOptions() capture.CaptureOptions {
+	return capture.CaptureOptions{
+		IncludeDecorations: s.includeDecorations,
+		IncludeCursor:      s.includeCursor,
 	}
 }
 

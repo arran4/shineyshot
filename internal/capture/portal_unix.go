@@ -10,11 +10,14 @@ import (
 	"image/png"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
 
-func portalScreenshot(interactive bool) (*image.RGBA, error) {
+var portalHandleToken = newPortalHandleToken
+
+func portalScreenshot(interactive bool, captureOpts CaptureOptions) (*image.RGBA, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return nil, fmt.Errorf("dbus connect: %w", err)
@@ -26,9 +29,7 @@ func portalScreenshot(interactive bool) (*image.RGBA, error) {
 	}()
 
 	obj := conn.Object("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop")
-	opts := map[string]dbus.Variant{
-		"interactive": dbus.MakeVariant(interactive),
-	}
+	opts := portalScreenshotOptions(interactive, captureOpts)
 	var handle dbus.ObjectPath
 	call := obj.Call("org.freedesktop.portal.Screenshot.Screenshot", 0, "", opts)
 	if call.Err != nil {
@@ -64,6 +65,24 @@ func portalScreenshot(interactive bool) (*image.RGBA, error) {
 		}
 	}
 	return nil, fmt.Errorf("portal screenshot: response missing image data")
+}
+
+func newPortalHandleToken() string {
+	return fmt.Sprintf("shineyshot-%d", time.Now().UnixNano())
+}
+
+func portalScreenshotOptions(interactive bool, captureOpts CaptureOptions) map[string]dbus.Variant {
+	cursorMode := "hidden"
+	if captureOpts.IncludeCursor {
+		cursorMode = "embedded"
+	}
+	return map[string]dbus.Variant{
+		"interactive":    dbus.MakeVariant(interactive),
+		"handle_token":   dbus.MakeVariant(portalHandleToken()),
+		"modal":          dbus.MakeVariant(interactive),
+		"cursor_mode":    dbus.MakeVariant(cursorMode),
+		"restore_window": dbus.MakeVariant(captureOpts.IncludeDecorations),
+	}
 }
 
 func loadPNG(path string) (*image.RGBA, error) {

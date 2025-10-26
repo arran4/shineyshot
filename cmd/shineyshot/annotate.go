@@ -90,28 +90,32 @@ func (a *annotateCmd) Run() error {
 	switch a.action {
 	case "capture":
 		var err error
+		opts := capture.CaptureOptions{}
 		switch a.target {
 		case "screen":
-			img, err = captureScreenshotFn(a.selector)
+			img, err = captureScreenshotFn(a.selector, opts)
 		case "window":
-			img, err = captureWindowFn(a.selector)
+			img, err = captureWindowFn(a.selector, opts)
 		case "region":
 			rectSpec := a.rect
 			if rectSpec == "" {
 				rectSpec = a.selector
 			}
 			if strings.TrimSpace(rectSpec) == "" {
-				img, err = captureRegionFn()
+        img, err = captureRegionFn(opts)
 			} else {
 				var rect image.Rectangle
 				rect, err = parseRect(rectSpec)
 				if err == nil {
-					img, err = captureRegionRectFn(rect)
+					img, err = captureRegionRectFn(rect, opts)
 				}
 			}
 		}
 		if err != nil {
 			return fmt.Errorf("failed to capture %s: %w", a.target, err)
+		}
+		if a.root != nil {
+			a.root.notifyCapture(a.captureDetail(), img)
 		}
 	case "open":
 		f, err := os.Open(a.file)
@@ -153,4 +157,26 @@ func (a *annotateCmd) Run() error {
 	st := appstate.New(opts...)
 	st.Run()
 	return nil
+}
+
+func (a *annotateCmd) captureDetail() string {
+	mode := strings.TrimSpace(a.target)
+	switch mode {
+	case "screen":
+		if strings.TrimSpace(a.selector) != "" {
+			return fmt.Sprintf("screen %s", a.selector)
+		}
+	case "window":
+		if strings.TrimSpace(a.selector) != "" {
+			return fmt.Sprintf("window %s", a.selector)
+		}
+	case "region":
+		if strings.TrimSpace(a.rect) != "" {
+			return fmt.Sprintf("region %s", a.rect)
+		}
+	}
+	if mode == "" {
+		return "capture"
+	}
+	return fmt.Sprintf("%s capture", mode)
 }
