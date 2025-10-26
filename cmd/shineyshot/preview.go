@@ -49,7 +49,10 @@ func (p *previewCmd) Run() error {
 	}
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-	st := appstate.New(appstate.WithImage(rgba))
+	st := appstate.New(
+		appstate.WithImage(rgba),
+		appstate.WithMode(appstate.ModePreview),
+	)
 	st.Run()
 	return nil
 }

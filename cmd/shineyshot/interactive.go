@@ -664,6 +664,7 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 			appstate.WithOutput(output),
 			appstate.WithColorIndex(colorIdx),
 			appstate.WithWidthIndex(widthIdx),
+			appstate.WithMode(appstate.ModePreview),
 		)
 		go st.Run()
 		i.writeln(i.stdout, "preview window opened")
