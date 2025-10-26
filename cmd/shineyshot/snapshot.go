@@ -20,6 +20,7 @@ import (
 type snapshotCmd struct {
 	output             string
 	stdout             bool
+	toClipboard        bool
 	mode               string
 	selector           string
 	rect               string
@@ -45,6 +46,8 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	defaults := render.DefaultShadowOptions()
 	fs.StringVar(&s.output, "output", "screenshot.png", "write the capture to this file path")
 	fs.BoolVar(&s.stdout, "stdout", false, "write PNG data to stdout")
+	fs.BoolVar(&s.toClipboard, "to-clipboard", false, "copy the capture to the clipboard")
+	fs.BoolVar(&s.toClipboard, "to-clip", false, "copy the capture to the clipboard (alias)")
 	fs.StringVar(&s.selector, "select", "", "selector for screen or window capture")
 	fs.StringVar(&s.rect, "rect", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
 	fs.BoolVar(&s.includeDecorations, "include-decorations", false, "request window decorations when capturing windows")
@@ -61,6 +64,9 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 		return nil, err
 	}
 	s.shadowPoint = pt
+	if s.toClipboard && s.stdout {
+		return nil, fmt.Errorf("-stdout cannot be used with -to-clipboard")
+	}
 	operands := fs.Args()
 	if len(operands) == 0 {
 		return nil, &UsageError{of: s}
@@ -102,6 +108,20 @@ func (s *snapshotCmd) Run() error {
 	if s.root != nil {
 		detail := s.describeCapture()
 		s.root.notifyCapture(detail, img)
+	}
+	if s.toClipboard {
+		if err := clipboard.WriteImage(img); err != nil {
+			return fmt.Errorf("copy PNG to clipboard: %w", err)
+		}
+		detail := s.describeCapture()
+		if detail == "" {
+			detail = "image"
+		}
+		fmt.Fprintf(os.Stderr, "copied %s to clipboard\n", detail)
+		if s.root != nil {
+			s.root.notifyCopy(detail)
+		}
+		return nil
 	}
 	var w io.Writer
 	if s.stdout {

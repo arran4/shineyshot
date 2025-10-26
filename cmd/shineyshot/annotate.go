@@ -28,6 +28,7 @@ type annotateCmd struct {
 	shadowOffset  string
 	shadowPoint   image.Point
 	shadowOpacity float64
+	fromClipboard bool
 	*root
 	fs *flag.FlagSet
 }
@@ -48,6 +49,8 @@ func parseAnnotateCmd(args []string, r *root) (*annotateCmd, error) {
 	fs.IntVar(&a.shadowRadius, "shadow-radius", defaults.Radius, "drop shadow blur radius in pixels")
 	fs.StringVar(&a.shadowOffset, "shadow-offset", formatShadowOffset(defaults.Offset), "drop shadow offset as dx,dy")
 	fs.Float64Var(&a.shadowOpacity, "shadow-opacity", defaults.Opacity, "drop shadow opacity between 0 and 1")
+	fs.BoolVar(&a.fromClipboard, "from-clipboard", false, "load the input image from the clipboard")
+	fs.BoolVar(&a.fromClipboard, "from-clip", false, "load the input image from the clipboard (alias)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -63,6 +66,9 @@ func parseAnnotateCmd(args []string, r *root) (*annotateCmd, error) {
 	a.action = strings.ToLower(strings.TrimSpace(operands[0]))
 	switch a.action {
 	case "capture":
+		if a.fromClipboard {
+			return nil, fmt.Errorf("-from-clipboard is not supported with annotate capture")
+		}
 		if len(operands) < 2 {
 			return nil, &UsageError{of: a}
 		}
@@ -86,14 +92,13 @@ func parseAnnotateCmd(args []string, r *root) (*annotateCmd, error) {
 			return nil, &UsageError{of: a}
 		}
 	case "open":
-		if a.file == "" {
-			if len(operands) < 2 {
-				return nil, &UsageError{of: a}
-			}
+		if a.file == "" && len(operands) > 1 {
 			a.file = strings.TrimSpace(strings.Join(operands[1:], " "))
 		}
-		if a.file == "" {
-			return nil, &UsageError{of: a}
+		if !a.fromClipboard {
+			if a.file == "" {
+				return nil, &UsageError{of: a}
+			}
 		}
 		a.output = a.file
 	default:
@@ -132,19 +137,28 @@ func (a *annotateCmd) Run() error {
 			return fmt.Errorf("failed to capture %s: %w", a.target, err)
 		}
 	case "open":
-		f, err := os.Open(a.file)
-		if err != nil {
-			return fmt.Errorf("open %q: %w", a.file, err)
+		if a.fromClipboard {
+			src, err := clipboard.ReadImage()
+			if err != nil {
+				return fmt.Errorf("read clipboard image: %w", err)
+			}
+			img = image.NewRGBA(src.Bounds())
+			draw.Draw(img, img.Bounds(), src, image.Point{}, draw.Src)
+		} else {
+			f, err := os.Open(a.file)
+			if err != nil {
+				return fmt.Errorf("open %q: %w", a.file, err)
+			}
+			dec, err := png.Decode(f)
+			if cerr := f.Close(); cerr != nil && err == nil {
+				err = cerr
+			}
+			if err != nil {
+				return fmt.Errorf("decode %q: %w", a.file, err)
+			}
+			img = image.NewRGBA(dec.Bounds())
+			draw.Draw(img, img.Bounds(), dec, image.Point{}, draw.Src)
 		}
-		dec, err := png.Decode(f)
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-		if err != nil {
-			return fmt.Errorf("decode %q: %w", a.file, err)
-		}
-		img = image.NewRGBA(dec.Bounds())
-		draw.Draw(img, img.Bounds(), dec, image.Point{}, draw.Src)
 	}
 	shadowOpts := a.shadowOptions()
 	initialShadowOffset := image.Point{}

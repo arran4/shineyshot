@@ -17,7 +17,10 @@ type CaptureOptions struct {
 	IncludeCursor bool
 }
 
-var portalScreenshotFn = portalScreenshot
+var (
+	portalCapture      = portalScreenshot
+	portalScreenshotFn = portalCapture
+)
 
 // CaptureScreenshot captures the desktop. When a display selector is provided it will
 // crop the result to the matching monitor.
