@@ -55,6 +55,16 @@ const (
 	ToolText
 )
 
+// Mode controls the available interactions in the UI.
+type Mode int
+
+const (
+	// ModeAnnotate enables the full annotation toolset.
+	ModeAnnotate Mode = iota
+	// ModePreview restricts the UI to viewing until annotation is requested.
+	ModePreview
+)
+
 const (
 	defaultColorIndex = 2
 	defaultWidthIndex = 2
@@ -520,6 +530,43 @@ func (tb *ToolButton) Activate() {
 	}
 }
 
+// ActionButton represents a toolbar button that performs a single action.
+type ActionButton struct {
+	label      string
+	rect       image.Rectangle
+	onActivate func()
+}
+
+var _ Button = (*ActionButton)(nil)
+
+func (ab *ActionButton) Draw(dst *image.RGBA, state ButtonState) {
+	c := color.RGBA{200, 200, 200, 255}
+	switch state {
+	case StateHover:
+		c = color.RGBA{180, 180, 180, 255}
+	case StatePressed:
+		c = color.RGBA{150, 150, 150, 255}
+	}
+	draw.Draw(dst, ab.rect, &image.Uniform{c}, image.Point{}, draw.Src)
+	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+		Dot: fixed.P(ab.rect.Min.X+4, ab.rect.Min.Y+16)}
+	d.DrawString(ab.label)
+}
+
+func (ab *ActionButton) Rect() image.Rectangle { return ab.rect }
+
+func (ab *ActionButton) SetRect(r image.Rectangle) {
+	if r != ab.rect {
+		ab.rect = r
+	}
+}
+
+func (ab *ActionButton) Activate() {
+	if ab.onActivate != nil {
+		ab.onActivate()
+	}
+}
+
 func actionOfTool(t Tool) actionType {
 	for _, cb := range toolButtons {
 		tb := cb.Button.(*ToolButton)
@@ -650,7 +697,7 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int, title string) {
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string)) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string), annotationEnabled bool) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 	shortcutRects = shortcutRects[:0]
@@ -662,22 +709,32 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 			{label: "Esc:cancel", action: func() { trigger("textcancel") }},
 		}
 	} else {
-		shortcuts = []Shortcut{
-			{label: "^N:capture", action: func() { trigger("capture") }},
-			{label: "^U:dup", action: func() { trigger("dup") }},
-			{label: "^V:paste", action: func() { trigger("paste") }},
-			{label: zoomStr, action: func() { trigger("zoom") }},
-			{label: "^D:delete", action: func() { trigger("delete") }},
-			{label: "^C:copy image", action: func() { trigger("copy") }},
-			{label: "^S:save", action: func() { trigger("save") }},
-			{label: "Q:quit", action: func() { trigger("quit") }},
-		}
-		if tool == ToolCrop {
-			shortcuts = append(shortcuts,
-				Shortcut{label: "Enter:crop", action: func() { trigger("crop") }},
-				Shortcut{label: "Ctrl+Enter:new tab", action: func() { trigger("croptab") }},
-				Shortcut{label: "Esc:cancel", action: func() { trigger("cropcancel") }},
-			)
+		if annotationEnabled {
+			shortcuts = []Shortcut{
+				{label: "^N:capture", action: func() { trigger("capture") }},
+				{label: "^U:dup", action: func() { trigger("dup") }},
+				{label: "^V:paste", action: func() { trigger("paste") }},
+				{label: zoomStr, action: func() { trigger("zoom") }},
+				{label: "^D:delete", action: func() { trigger("delete") }},
+				{label: "^C:copy image", action: func() { trigger("copy") }},
+				{label: "^S:save", action: func() { trigger("save") }},
+				{label: "Q:quit", action: func() { trigger("quit") }},
+			}
+			if tool == ToolCrop {
+				shortcuts = append(shortcuts,
+					Shortcut{label: "Enter:crop", action: func() { trigger("crop") }},
+					Shortcut{label: "Ctrl+Enter:new tab", action: func() { trigger("croptab") }},
+					Shortcut{label: "Esc:cancel", action: func() { trigger("cropcancel") }},
+				)
+			}
+		} else {
+			shortcuts = []Shortcut{
+				{label: zoomStr, action: func() { trigger("zoom") }},
+				{label: "^C:copy image", action: func() { trigger("copy") }},
+				{label: "^S:save", action: func() { trigger("save") }},
+				{label: "A:annotate", action: func() { trigger("annotate") }},
+				{label: "Q:quit", action: func() { trigger("quit") }},
+			}
 		}
 	}
 	x := toolbarWidth + 4
@@ -697,20 +754,30 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	}
 }
 
-func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
+func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, annotationEnabled bool) {
 	y := tabHeight
 	for i, cb := range toolButtons {
 		r := image.Rect(0, y, toolbarWidth, y+24)
 		cb.SetRect(r)
-		tb := cb.Button.(*ToolButton)
 		state := StateDefault
-		if tb.tool == tool {
-			state = StatePressed
-		} else if i == hoverTool {
-			state = StateHover
+		switch b := cb.Button.(type) {
+		case *ToolButton:
+			if b.tool == tool {
+				state = StatePressed
+			} else if i == hoverTool {
+				state = StateHover
+			}
+		default:
+			if i == hoverTool {
+				state = StateHover
+			}
 		}
 		cb.Draw(dst, state)
 		y += 24
+	}
+
+	if !annotationEnabled {
+		return
 	}
 
 	// color palette below tools
@@ -1089,22 +1156,24 @@ func cropImage(img *image.RGBA, rect image.Rectangle) *image.RGBA {
 }
 
 type paintState struct {
-	width, height   int
-	tabs            []Tab
-	current         int
-	tool            Tool
-	colorIdx        int
-	numberIdx       int
-	cropping        bool
-	cropRect        image.Rectangle
-	cropStart       image.Point
-	textInputActive bool
-	textInput       string
-	textPos         image.Point
-	message         string
-	messageUntil    time.Time
-	handleShortcut  func(string)
-	title           string
+	width, height     int
+	tabs              []Tab
+	current           int
+	tool              Tool
+	colorIdx          int
+	numberIdx         int
+	cropping          bool
+	cropRect          image.Rectangle
+	cropStart         image.Point
+	textInputActive   bool
+	textInput         string
+	textPos           image.Point
+	message           string
+	messageUntil      time.Time
+	handleShortcut    func(string)
+	annotationEnabled bool
+	handleShortcut    func(string)
+	title             string
 }
 
 func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintState) {
@@ -1156,9 +1225,9 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 		return
 	}
 
-	drawTabs(b.RGBA(), st.tabs, st.current, st.title)
-	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx)
-	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut)
+	drawTabs(b.RGBA(), st.tabs, st.current)
+	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx, st.annotationEnabled)
+	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut, st.annotationEnabled)
 
 	if ctx.Err() != nil {
 		return

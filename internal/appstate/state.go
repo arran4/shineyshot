@@ -33,6 +33,7 @@ type AppState struct {
 	Output   string
 	ColorIdx int
 	WidthIdx int
+	Mode     Mode
 	Title    string
 
 	updateCh    chan struct{}
@@ -60,6 +61,9 @@ func WithColorIndex(idx int) Option { return func(a *AppState) { a.ColorIdx = id
 // WithWidthIndex sets the initial stroke width index for drawing tools.
 func WithWidthIndex(idx int) Option { return func(a *AppState) { a.WidthIdx = idx } }
 
+// WithMode configures the UI mode for the state machine.
+func WithMode(mode Mode) Option { return func(a *AppState) { a.Mode = mode } }
+
 // WithTitle sets the window title displayed in the UI.
 func WithTitle(title string) Option { return func(a *AppState) { a.Title = title } }
 
@@ -76,6 +80,7 @@ func New(opts ...Option) *AppState {
 	a := &AppState{
 		ColorIdx: defaultColorIndex,
 		WidthIdx: defaultWidthIndex,
+		Mode:     ModeAnnotate,
 		updateCh: make(chan struct{}, 1),
 	}
 	for _, o := range opts {
@@ -261,25 +266,7 @@ func (a *AppState) Main(s screen.Screen) {
 	tabs[current].Zoom = fitZoom(rgba, width, height)
 	a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 
-	toolButtons = []*CacheButton{
-		{Button: &ToolButton{label: "M:Move", tool: ToolMove, atype: actionMove}},
-		{Button: &ToolButton{label: "R:Crop", tool: ToolCrop, atype: actionCrop}},
-		{Button: &ToolButton{label: "B:Draw", tool: ToolDraw, atype: actionDraw}},
-		{Button: &ToolButton{label: "O:Circle", tool: ToolCircle, atype: actionDraw}},
-		{Button: &ToolButton{label: "L:Line", tool: ToolLine, atype: actionDraw}},
-		{Button: &ToolButton{label: "A:Arrow", tool: ToolArrow, atype: actionDraw}},
-		{Button: &ToolButton{label: "X:Rect", tool: ToolRect, atype: actionDraw}},
-		{Button: &ToolButton{label: "H:Num", tool: ToolNumber, atype: actionDraw}},
-		{Button: &ToolButton{label: "T:Text", tool: ToolText, atype: actionNone}},
-	}
-	for _, cb := range toolButtons {
-		tb := cb.Button.(*ToolButton)
-		t := tb
-		tb.onSelect = func() {
-			tool = t.tool
-			active = actionNone
-		}
-	}
+	annotationEnabled := a.Mode != ModePreview
 
 	keyboardAction = map[KeyShortcut]string{}
 
@@ -294,6 +281,196 @@ func (a *AppState) Main(s screen.Screen) {
 		}
 	}
 
+	var configureMode func()
+
+	configureMode = func() {
+		actions = map[string]func(){}
+		keyboardAction = map[KeyShortcut]string{}
+		hoverTool = -1
+		hoverPalette = -1
+		hoverWidth = -1
+		hoverNumber = -1
+		hoverTextSize = -1
+
+		registerCopy := func() {
+			register("copy", shortcutList{{Rune: 'c', Modifiers: key.ModControl}}, func() {
+				if err := clipboard.WriteImage(tabs[current].Image); err != nil {
+					log.Printf("copy: %v", err)
+					return
+				}
+				message = "image copied to clipboard"
+				log.Print(message)
+				messageUntil = time.Now().Add(2 * time.Second)
+			})
+		}
+
+		registerSave := func() {
+			register("save", shortcutList{{Rune: 's', Modifiers: key.ModControl}}, func() {
+				out, err := os.Create(output)
+				if err != nil {
+					log.Printf("save: %v", err)
+					return
+				}
+				if err := png.Encode(out, tabs[current].Image); err != nil {
+					log.Printf("save: %v", err)
+					if cerr := out.Close(); cerr != nil {
+						log.Printf("save: closing file: %v", cerr)
+					}
+					return
+				}
+				if err := out.Close(); err != nil {
+					log.Printf("save: closing file: %v", err)
+					return
+				}
+				message = fmt.Sprintf("saved %s", output)
+				log.Print(message)
+				messageUntil = time.Now().Add(2 * time.Second)
+			})
+		}
+
+		registerCommonActions := func() {
+			registerCopy()
+			registerSave()
+		}
+
+		if !annotationEnabled {
+			toolButtons = []*CacheButton{
+				{Button: &ActionButton{label: "Annotate", onActivate: func() {
+					if annotationEnabled {
+						return
+					}
+					annotationEnabled = true
+					tool = ToolMove
+					active = actionNone
+					configureMode()
+					w.Send(paint.Event{})
+				}}},
+			}
+			registerCommonActions()
+			register("annotate", shortcutList{{Rune: 'a'}}, func() {
+				if annotationEnabled {
+					return
+				}
+				annotationEnabled = true
+				tool = ToolMove
+				active = actionNone
+				configureMode()
+				w.Send(paint.Event{})
+			})
+			return
+		}
+
+		toolButtons = []*CacheButton{
+			{Button: &ToolButton{label: "M:Move", tool: ToolMove, atype: actionMove}},
+			{Button: &ToolButton{label: "R:Crop", tool: ToolCrop, atype: actionCrop}},
+			{Button: &ToolButton{label: "B:Draw", tool: ToolDraw, atype: actionDraw}},
+			{Button: &ToolButton{label: "O:Circle", tool: ToolCircle, atype: actionDraw}},
+			{Button: &ToolButton{label: "L:Line", tool: ToolLine, atype: actionDraw}},
+			{Button: &ToolButton{label: "A:Arrow", tool: ToolArrow, atype: actionDraw}},
+			{Button: &ToolButton{label: "X:Rect", tool: ToolRect, atype: actionDraw}},
+			{Button: &ToolButton{label: "H:Num", tool: ToolNumber, atype: actionDraw}},
+			{Button: &ToolButton{label: "T:Text", tool: ToolText, atype: actionNone}},
+		}
+		for _, cb := range toolButtons {
+			tb, ok := cb.Button.(*ToolButton)
+			if !ok {
+				continue
+			}
+			t := tb
+			tb.onSelect = func() {
+				tool = t.tool
+				active = actionNone
+			}
+		}
+
+		registerCommonActions()
+
+		register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
+			img, err := capture.CaptureScreenshot("")
+			if err != nil {
+				log.Printf("capture screenshot: %v", err)
+				return
+			}
+			tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
+			current = len(tabs) - 1
+			tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
+			message = "captured screenshot"
+			log.Print(message)
+			messageUntil = time.Now().Add(2 * time.Second)
+		})
+
+		register("dup", shortcutList{{Rune: 'u', Modifiers: key.ModControl}}, func() {
+			dup := image.NewRGBA(tabs[current].Image.Bounds())
+			draw.Draw(dup, dup.Bounds(), tabs[current].Image, image.Point{}, draw.Src)
+			tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx})
+			current = len(tabs) - 1
+		})
+
+		register("paste", shortcutList{{Rune: 'v', Modifiers: key.ModControl}}, func() {
+			img, err := clipboard.ReadImage()
+			if err != nil {
+				log.Printf("paste: %v", err)
+				return
+			}
+			rgba := image.NewRGBA(img.Bounds())
+			draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
+			tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
+			current = len(tabs) - 1
+			message = "pasted new tab"
+			log.Print(message)
+			messageUntil = time.Now().Add(2 * time.Second)
+		})
+
+		register("delete", shortcutList{{Rune: 'd', Modifiers: key.ModControl}}, func() {
+			if len(tabs) > 1 {
+				tabs = append(tabs[:current], tabs[current+1:]...)
+				if current >= len(tabs) {
+					current = len(tabs) - 1
+				}
+			}
+		})
+
+		register("textdone", shortcutList{{Code: key.CodeReturnEnter}}, func() {
+			d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(paletteColorAt(colorIdx)), Face: textFaces[textSizeIdx]}
+			d.Dot = fixed.P(textPos.X, textPos.Y)
+			d.DrawString(textInput)
+			textInputActive = false
+		})
+
+		register("textcancel", shortcutList{{Code: key.CodeEscape}}, func() {
+			textInputActive = false
+		})
+
+		register("crop", shortcutList{{Code: key.CodeReturnEnter}}, func() {
+			if tool == ToolCrop && !cropRect.Empty() {
+				cropped := cropImage(tabs[current].Image, cropRect)
+				tabs[current].Image = cropped
+				tabs[current].Offset = tabs[current].Offset.Add(cropRect.Min)
+				active = actionNone
+				cropRect = image.Rectangle{}
+			}
+		})
+
+		register("croptab", shortcutList{{Code: key.CodeReturnEnter, Modifiers: key.ModControl}}, func() {
+			if tool == ToolCrop && !cropRect.Empty() {
+				cropped := cropImage(tabs[current].Image, cropRect)
+				off := tabs[current].Offset.Add(cropRect.Min)
+				tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
+				current = len(tabs) - 1
+				active = actionNone
+				cropRect = image.Rectangle{}
+			}
+		})
+
+		register("cropcancel", shortcutList{{Code: key.CodeEscape}}, func() {
+			if tool == ToolCrop {
+				cropRect = image.Rectangle{}
+				active = actionNone
+			}
+		})
+
+	}
+
 	handleShortcut := func(action string) {
 		if fn, ok := actions[action]; ok {
 			fn()
@@ -301,121 +478,7 @@ func (a *AppState) Main(s screen.Screen) {
 		w.Send(paint.Event{})
 	}
 
-	register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
-		img, err := capture.CaptureScreenshot("")
-		if err != nil {
-			log.Printf("capture screenshot: %v", err)
-			return
-		}
-		tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
-		current = len(tabs) - 1
-		tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
-		message = "captured screenshot"
-		log.Print(message)
-		messageUntil = time.Now().Add(2 * time.Second)
-	})
-
-	register("dup", shortcutList{{Rune: 'u', Modifiers: key.ModControl}}, func() {
-		dup := image.NewRGBA(tabs[current].Image.Bounds())
-		draw.Draw(dup, dup.Bounds(), tabs[current].Image, image.Point{}, draw.Src)
-		tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx})
-		current = len(tabs) - 1
-	})
-
-	register("paste", shortcutList{{Rune: 'v', Modifiers: key.ModControl}}, func() {
-		img, err := clipboard.ReadImage()
-		if err != nil {
-			log.Printf("paste: %v", err)
-			return
-		}
-		rgba := image.NewRGBA(img.Bounds())
-		draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-		tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
-		current = len(tabs) - 1
-		message = "pasted new tab"
-		log.Print(message)
-		messageUntil = time.Now().Add(2 * time.Second)
-	})
-
-	register("delete", shortcutList{{Rune: 'd', Modifiers: key.ModControl}}, func() {
-		if len(tabs) > 1 {
-			tabs = append(tabs[:current], tabs[current+1:]...)
-			if current >= len(tabs) {
-				current = len(tabs) - 1
-			}
-		}
-	})
-
-	register("copy", shortcutList{{Rune: 'c', Modifiers: key.ModControl}}, func() {
-		if err := clipboard.WriteImage(tabs[current].Image); err != nil {
-			log.Printf("copy: %v", err)
-			return
-		}
-		message = "image copied to clipboard"
-		log.Print(message)
-		messageUntil = time.Now().Add(2 * time.Second)
-	})
-
-	register("save", shortcutList{{Rune: 's', Modifiers: key.ModControl}}, func() {
-		out, err := os.Create(output)
-		if err != nil {
-			log.Printf("save: %v", err)
-			return
-		}
-		if err := png.Encode(out, tabs[current].Image); err != nil {
-			log.Printf("save: %v", err)
-			if cerr := out.Close(); cerr != nil {
-				log.Printf("save: closing file: %v", cerr)
-			}
-			return
-		}
-		if err := out.Close(); err != nil {
-			log.Printf("save: closing file: %v", err)
-			return
-		}
-		message = fmt.Sprintf("saved %s", output)
-		log.Print(message)
-		messageUntil = time.Now().Add(2 * time.Second)
-	})
-
-	register("textdone", shortcutList{{Code: key.CodeReturnEnter}}, func() {
-		d := &font.Drawer{Dst: tabs[current].Image, Src: image.NewUniform(paletteColorAt(colorIdx)), Face: textFaces[textSizeIdx]}
-		d.Dot = fixed.P(textPos.X, textPos.Y)
-		d.DrawString(textInput)
-		textInputActive = false
-	})
-
-	register("textcancel", shortcutList{{Code: key.CodeEscape}}, func() {
-		textInputActive = false
-	})
-
-	register("crop", shortcutList{{Code: key.CodeReturnEnter}}, func() {
-		if tool == ToolCrop && !cropRect.Empty() {
-			cropped := cropImage(tabs[current].Image, cropRect)
-			tabs[current].Image = cropped
-			tabs[current].Offset = tabs[current].Offset.Add(cropRect.Min)
-			active = actionNone
-			cropRect = image.Rectangle{}
-		}
-	})
-
-	register("croptab", shortcutList{{Code: key.CodeReturnEnter, Modifiers: key.ModControl}}, func() {
-		if tool == ToolCrop && !cropRect.Empty() {
-			cropped := cropImage(tabs[current].Image, cropRect)
-			off := tabs[current].Offset.Add(cropRect.Min)
-			tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
-			current = len(tabs) - 1
-			active = actionNone
-			cropRect = image.Rectangle{}
-		}
-	})
-
-	register("cropcancel", shortcutList{{Code: key.CodeEscape}}, func() {
-		if tool == ToolCrop {
-			cropRect = image.Rectangle{}
-			active = actionNone
-		}
-	})
+	configureMode()
 
 	for {
 		e := w.NextEvent()
@@ -453,23 +516,24 @@ func (a *AppState) Main(s screen.Screen) {
 			}
 			paintMu.Unlock()
 			st := paintState{
-				width:           width,
-				height:          height,
-				tabs:            tabs,
-				current:         current,
-				tool:            tool,
-				colorIdx:        colorIdx,
-				numberIdx:       numberIdx,
-				cropping:        active == actionCrop,
-				cropRect:        cropRect,
-				cropStart:       cropStart,
-				textInputActive: textInputActive,
-				textInput:       textInput,
-				textPos:         textPos,
-				message:         message,
-				messageUntil:    messageUntil,
-				handleShortcut:  handleShortcut,
-				title:           title,
+				width:             width,
+				height:            height,
+				tabs:              tabs,
+				current:           current,
+				tool:              tool,
+				colorIdx:          colorIdx,
+				numberIdx:         numberIdx,
+				cropping:          active == actionCrop,
+				cropRect:          cropRect,
+				cropStart:         cropStart,
+				textInputActive:   textInputActive,
+				textInput:         textInput,
+				textPos:           textPos,
+				message:           message,
+				messageUntil:      messageUntil,
+				handleShortcut:    handleShortcut,
+				annotationEnabled: annotationEnabled,
+				title:             title,
 			}
 			select {
 			case paintCh <- st:
@@ -530,6 +594,17 @@ func (a *AppState) Main(s screen.Screen) {
 						w.Send(paint.Event{})
 					}
 					hoverTool = idx
+					if e.Direction == mouse.DirNone {
+						w.Send(paint.Event{})
+					}
+					continue
+				}
+				if !annotationEnabled {
+					hoverTool = -1
+					hoverPalette = -1
+					hoverWidth = -1
+					hoverNumber = -1
+					hoverTextSize = -1
 					if e.Direction == mouse.DirNone {
 						w.Send(paint.Event{})
 					}
@@ -629,6 +704,9 @@ func (a *AppState) Main(s screen.Screen) {
 			mx := int((float64(e.X)-float64(baseRect.Min.X))/tabs[current].Zoom) - tabs[current].Offset.X
 			my := int((float64(e.Y)-float64(baseRect.Min.Y))/tabs[current].Zoom) - tabs[current].Offset.Y
 			if e.Button == mouse.ButtonLeft {
+				if !annotationEnabled && tool != ToolMove {
+					continue
+				}
 				if e.Direction == mouse.DirPress {
 					act := actionOfTool(tool)
 					switch tool {
@@ -675,6 +753,10 @@ func (a *AppState) Main(s screen.Screen) {
 						w.Send(paint.Event{})
 					}
 				} else if e.Direction == mouse.DirRelease {
+					if !annotationEnabled {
+						active = actionNone
+						continue
+					}
 					if active == actionCrop && tool == ToolCrop {
 						dx := mx - cropStart.X
 						dy := my - cropStart.Y
@@ -711,7 +793,7 @@ func (a *AppState) Main(s screen.Screen) {
 						}
 						cropRect = r
 					}
-					if active == actionDraw && tool != ToolCrop {
+					if annotationEnabled && active == actionDraw && tool != ToolCrop {
 						switch tool {
 						case ToolDraw:
 							minX, minY := last.X, last.Y
@@ -865,7 +947,7 @@ func (a *AppState) Main(s screen.Screen) {
 				w.Send(paint.Event{})
 			}
 
-			if active == actionDraw && tool == ToolDraw && e.Direction == mouse.DirNone {
+			if annotationEnabled && active == actionDraw && tool == ToolDraw && e.Direction == mouse.DirNone {
 				p := image.Point{mx, my}
 				minX, minY := last.X, last.Y
 				maxX, maxY := p.X, p.Y
@@ -955,34 +1037,58 @@ func (a *AppState) Main(s screen.Screen) {
 					active = actionNone
 					w.Send(paint.Event{})
 				case 'r', 'R':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolCrop
 					active = actionNone
 					w.Send(paint.Event{})
 				case 'b', 'B':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolDraw
 					active = actionNone
 					w.Send(paint.Event{})
 				case 'o', 'O':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolCircle
 					active = actionNone
 					w.Send(paint.Event{})
 				case 'l', 'L':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolLine
 					active = actionNone
 					w.Send(paint.Event{})
 				case 'a', 'A':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolArrow
 					active = actionNone
 					w.Send(paint.Event{})
 				case 'x', 'X':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolRect
 					active = actionNone
 					w.Send(paint.Event{})
 				case 't', 'T':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolText
 					active = actionNone
 					w.Send(paint.Event{})
 				case 'h', 'H':
+					if !annotationEnabled {
+						continue
+					}
 					tool = ToolNumber
 					active = actionNone
 					w.Send(paint.Event{})

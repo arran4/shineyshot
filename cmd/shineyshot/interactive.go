@@ -669,6 +669,7 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 			appstate.WithOutput(output),
 			appstate.WithColorIndex(colorIdx),
 			appstate.WithWidthIndex(widthIdx),
+			appstate.WithMode(appstate.ModePreview),
 			appstate.WithTitle(windowTitle(titleOptions{
 				Mode:       "Preview",
 				Detail:     detail,

@@ -56,6 +56,7 @@ func (p *previewCmd) Run() error {
 	}
 	st := appstate.New(
 		appstate.WithImage(rgba),
+		appstate.WithMode(appstate.ModePreview),
 		appstate.WithTitle(windowTitle(titleOptions{
 			File: fileName,
 			Mode: "Preview",
