@@ -19,12 +19,12 @@ func TestApplyShadowBoundsGrowth(t *testing.T) {
 	if res.Image == nil {
 		t.Fatalf("expected image result")
 	}
-	wantBounds := image.Rect(0, 0, 20, 18)
+	wantBounds := image.Rect(0, 0, 18, 18)
 	if res.Image.Bounds() != wantBounds {
 		t.Fatalf("bounds mismatch: got %v want %v", res.Image.Bounds(), wantBounds)
 	}
-	if res.Offset != image.Pt(0, 1) {
-		t.Fatalf("offset mismatch: got %v want %v", res.Offset, image.Pt(0, 1))
+	if res.Offset != image.Pt(4, 4) {
+		t.Fatalf("offset mismatch: got %v want %v", res.Offset, image.Pt(4, 4))
 	}
 }
 

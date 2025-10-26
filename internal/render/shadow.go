@@ -58,24 +58,19 @@ func ApplyShadow(img *image.RGBA, opts ShadowOptions) ShadowResult {
 	}
 
 	srcBounds := img.Bounds()
-	shadowBounds := srcBounds.Add(opts.Offset)
+	paddedBounds := srcBounds
 	if radius > 0 {
-		shadowBounds = shadowBounds.Inset(-radius)
+		paddedBounds = paddedBounds.Inset(-radius)
 	}
 
-	minX := minInt(srcBounds.Min.X, shadowBounds.Min.X)
-	minY := minInt(srcBounds.Min.Y, shadowBounds.Min.Y)
-	maxX := maxInt(srcBounds.Max.X, shadowBounds.Max.X)
-	maxY := maxInt(srcBounds.Max.Y, shadowBounds.Max.Y)
-
-	width := maxX - minX
-	height := maxY - minY
+	dstRect := paddedBounds.Sub(paddedBounds.Min)
+	width := dstRect.Dx()
+	height := dstRect.Dy()
 	if width <= 0 || height <= 0 {
 		return ShadowResult{Image: img}
 	}
 
-	shift := image.Pt(-minX, -minY)
-	dstRect := image.Rect(0, 0, width, height)
+	shift := srcBounds.Min.Sub(paddedBounds.Min)
 
 	mask := image.NewGray(dstRect)
 	for y := srcBounds.Min.Y; y < srcBounds.Max.Y; y++ {
@@ -84,8 +79,8 @@ func ApplyShadow(img *image.RGBA, opts ShadowOptions) ShadowResult {
 			if a == 0 {
 				continue
 			}
-			mx := x + opts.Offset.X - minX
-			my := y + opts.Offset.Y - minY
+			mx := x - paddedBounds.Min.X
+			my := y - paddedBounds.Min.Y
 			mask.SetGray(mx, my, color.Gray{Y: a})
 		}
 	}
@@ -98,7 +93,7 @@ func ApplyShadow(img *image.RGBA, opts ShadowOptions) ShadowResult {
 	if shadowAlpha > 0 {
 		draw.DrawMask(dst, blurred.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, shadowAlpha}), image.Point{}, blurred, blurred.Bounds().Min, draw.Over)
 	}
-	draw.Draw(dst, srcBounds.Add(shift), img, srcBounds.Min, draw.Over)
+	draw.Draw(dst, srcBounds.Sub(paddedBounds.Min), img, srcBounds.Min, draw.Over)
 
 	return ShadowResult{Image: dst, Offset: shift}
 }
@@ -158,18 +153,4 @@ func blurGray(src *image.Gray, radius int) *image.Gray {
 	}
 
 	return dst
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
