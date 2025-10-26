@@ -1,0 +1,308 @@
+.TH SHINEYSHOT 1 "May 2024" "ShineyShot" "User Commands"
+.SH NAME
+shineyshot \- capture, annotate, and automate screenshots
+.SH SYNOPSIS
+.B shineyshot
+.RI [ global\ options ]
+.I command
+.RI [ command\ options ]
+.RI [ args... ]
+.SH DESCRIPTION
+.B ShineyShot
+combines a graphical editor with automation-friendly commands so you can capture,
+annotate, and distribute screenshots from the terminal, scripts, or a dedicated UI.
+Global options control desktop notifications while subcommands expose capture,
+drawing, preview, and background socket workflows.
+.SH GLOBAL OPTIONS
+The following options apply to every subcommand. Specify them before the
+subcommand name.
+.TP
+.B --notify-capture
+Show a desktop notification whenever a capture completes.
+.TP
+.B --notify-save
+Show a desktop notification after successfully writing an image to disk.
+.TP
+.B --notify-copy
+Show a desktop notification after copying image data to the clipboard.
+.SH COMMANDS
+Each subcommand accepts its own options and arguments. Run
+.BR shineyshot " " <command> " --help"
+for the latest usage.
+.SS annotate
+Launch the graphical editor directly, optionally capturing a new image first.
+.PP
+.B Synopsis
+.RS
+.nf
+shineyshot annotate [options] (open | capture (screen|window|region) [target])
+.fi
+.RE
+.PP
+.B Options
+.TP
+.BI -file " path"
+Open the specified image file in the editor and save updates back to it unless
+.BR -output
+overrides the destination.
+.TP
+.B --from-clipboard
+Load the starting image from the system clipboard instead of a file. This option
+cannot be combined with capture modes.
+.TP
+.BI -select " selector"
+Selector to use with
+.B screen
+or
+.B window
+captures. If omitted the active display or window is used.
+.TP
+.BI -rect " x0,y0,x1,y1"
+Rectangle to capture when targeting
+.BR region .
+.TP
+.B --shadow
+Apply a drop shadow before the editor opens. Use with the shadow parameters
+below.
+.TP
+.BI --shadow-radius " pixels"
+Blur radius for the drop shadow.
+.TP
+.BI --shadow-offset " dx,dy"
+Offset for the drop shadow.
+.TP
+.BI --shadow-opacity " value"
+Opacity for the drop shadow between 0 and 1.
+.SS snapshot
+Capture a screenshot directly to disk, stdout, or the clipboard.
+.PP
+.B Synopsis
+.RS
+.nf
+shineyshot snapshot [options] capture (screen|window|region) [target]
+.fi
+.RE
+.PP
+.B Options
+.TP
+.BI -output " path"
+Write the capture to the given file. Defaults to
+.IR screenshot.png .
+.TP
+.B --stdout
+Write PNG bytes to standard output instead of a file.
+.TP
+.B --to-clipboard
+Copy the captured image to the clipboard. Incompatible with
+.BR --stdout .
+.TP
+.BI -select " selector"
+Selector to use for screen or window captures.
+.TP
+.BI -rect " x0,y0,x1,y1"
+Rectangle to capture in region mode.
+.TP
+.B --include-decorations
+Request window frames and decorations where supported.
+.TP
+.B --include-cursor
+Embed the mouse pointer when supported by the compositor.
+.TP
+.B --shadow
+Apply a drop shadow to the captured image. The
+.B --shadow-radius , --shadow-offset ,
+ and
+.B --shadow-opacity
+options match those available on
+.BR annotate .
+.SS draw
+Apply lightweight annotations to an image file or clipboard contents.
+.PP
+.B Synopsis
+.RS
+.nf
+shineyshot draw [options] (line|arrow|rect|circle|number|text|mask) args...
+.fi
+.RE
+.PP
+.B Options
+.TP
+.BI -file " path"
+Source image file to modify.
+.TP
+.BI -output " path"
+Destination file path. Defaults to the input file.
+.TP
+.B --from-clipboard
+Read the source image from the clipboard. Requires
+.BR -output 
+when no input file is supplied.
+.TP
+.B --to-clipboard
+Copy the annotated result to the clipboard after writing the file (if any).
+.TP
+.BI --color " value"
+Stroke or fill colour. Accepts CSS colour names and hex values.
+.TP
+.BI --width " pixels"
+Stroke width in pixels for line, arrow, and rectangle annotations.
+.TP
+.BI --text-size " points"
+Text size used by the
+.B text
+shape.
+.TP
+.BI --number-size " pixels"
+Radius for numbered markers.
+.TP
+.BI --mask-opacity " value"
+Opacity for the
+.B mask
+shape between 0 (transparent) and 255 (opaque).
+.PP
+Each shape expects positional arguments:
+.RS
+.TP
+.B line
+.IR x0 y0 x1 y1
+.TP
+.B arrow
+.IR x0 y0 x1 y1
+.TP
+.B rect
+.IR x0 y0 x1 y1
+.TP
+.B circle
+.IR cx cy radius
+.TP
+.B number
+.IR x y value
+.TP
+.B text
+.IR x y " string"
+.TP
+.B mask
+.IR x0 y0 x1 y1
+.RE
+.SS file
+Run a sequence of commands while reusing a common file path.
+.PP
+.B Synopsis
+.RS
+.nf
+shineyshot file -file path [options] (capture|draw|annotate|preview) [...]
+.fi
+.RE
+.PP
+Use
+.B --from-clipboard
+with
+.B draw
+or
+.B annotate
+subcommands to seed the workflow from the clipboard. The
+.B capture
+operation forwards to
+.B snapshot
+while
+.B annotate
+opens the editor with the provided arguments.
+.SS preview
+Open an image in a read-only preview window.
+.PP
+.B Options
+.TP
+.BI -file " path"
+Image file to load.
+.TP
+.B --from-clipboard
+Load the image from the clipboard instead of disk.
+.SS background
+Manage background socket sessions that keep capture permissions alive.
+.PP
+.B Synopsis
+.RS
+.nf
+shineyshot background <start|stop|attach|run|list|clean|serve> [options]
+.fi
+.RE
+.PP
+Common options include:
+.TP
+.BI -name " session"
+Name of the background socket.
+.TP
+.BI -dir " path"
+Directory that stores socket files. Defaults to
+.BR SHINEYSHOT_SOCKET_DIR 
+or the OS-specific runtime directory.
+.PP
+The
+.B start
+command launches a socket server while
+.B run
+executes a single command through an existing session.
+.B attach
+provides an interactive REPL over the socket, and
+.B serve
+embeds the socket loop into another long-lived process.
+.SS interactive
+Launch the interactive terminal shell.
+.PP
+.B Options
+.TP
+.BI -e " command"
+Execute a command immediately without entering the shell. May be repeated.
+.TP
+.BI -name " session"
+Attach to a background session instead of launching a standalone shell. Combine with
+.BR -dir 
+when sockets live outside the default directory.
+.TP
+.BI -dir " path"
+Directory that stores socket files.
+.TP
+.B --include-decorations
+Request window decorations for capture commands issued inside the shell.
+.TP
+.B --include-cursor
+Embed the mouse pointer for capture commands issued inside the shell.
+.SS windows, colors, widths, version
+Utility commands that list available windows, palette colours, or stroke widths, and
+print version information respectively.
+.SH ENVIRONMENT
+.TP
+.B SHINEYSHOT_NOTIFY_TITLE
+Overrides the notification title displayed by desktop alerts.
+.TP
+.B SHINEYSHOT_NOTIFY_CAPTURE_TEXT
+Template used for capture notifications. Receives the capture detail string.
+.TP
+.B SHINEYSHOT_NOTIFY_SAVE_TEXT
+Template used for save notifications. Receives the saved path.
+.TP
+.B SHINEYSHOT_NOTIFY_COPY_TEXT
+Template used for clipboard notifications. Receives a short description of the copied data.
+.TP
+.B SHINEYSHOT_SOCKET_DIR
+Directory that stores background socket files when the
+.B -dir
+flag is not provided.
+.SH EXAMPLES
+Enable notifications and capture a window straight to the clipboard:
+.RS
+.nf
+shineyshot --notify-capture --notify-copy snapshot --to-clipboard capture window "Release Notes"
+.fi
+.RE
+.PP
+Open the editor with clipboard contents and add a quick annotation:
+.RS
+.nf
+shineyshot annotate --from-clipboard open
+shineyshot draw --from-clipboard --to-clipboard rect 10 10 320 200
+.fi
+.RE
+.SH SEE ALSO
+.BR grim (1),
+.BR slurp (1)
