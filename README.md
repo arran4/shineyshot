@@ -44,7 +44,7 @@ shineyshot annotate capture region 0,0,1440,900
 
 ### Drop shadows
 
-When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `--shadow` turns the effect on for the command while `--shadow-radius`, `--shadow-offset`, and `--shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
+When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `-shadow` turns the effect on for the command while `-shadow-radius`, `-shadow-offset`, and `-shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
 
 Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard—to apply the configured shadow once per tab. The control politely steps aside after it runs so you do not accidentally stack multiple shadows on the same image.
 
@@ -103,7 +103,7 @@ Window captures fall back to the active window when no selector is provided. Sup
 
 Pass `--stdout` to write the PNG bytes to stdout instead of creating a file. Add `--to-clipboard` when you want to skip disk altogether and push the capture straight into the clipboard for pasting elsewhere.
 
-When the compositor supports it, use `--include-decorations` to request window frames and `--include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
+When the compositor supports it, use `-include-decorations` to request window frames and `-include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
 
 `snapshot` captures also honour the drop-shadow flags discussed above so you can add framing immediately:
 
@@ -156,34 +156,34 @@ Run ShineyShot as a background service and communicate via UNIX sockets. The dae
 
 ```bash
 # Start a named background session (socket stored in $XDG_RUNTIME_DIR/shineyshot or ~/.shineyshot/sockets)
-sh-5.3$ shineyshot background start MySession
-started background session MySession at /run/user/1000/shineyshot/MySession.sock
+sh-5.3$ shineyshot background start demo-session
+started background session demo-session at /run/user/1000/shineyshot/demo-session.sock
 
 # List all active sessions
 sh-5.3$ shineyshot background list
 available sockets:
-  MySession
+  demo-session
 
 # Attach to a running session for live interaction
-sh-5.3$ shineyshot background attach MySession
+sh-5.3$ shineyshot background attach demo-session
 > arrow 0 0 320 240
 no image loaded
 > ^D
 
 # Run a single command within the session
-sh-5.3$ shineyshot background run MySession capture screen
+sh-5.3$ shineyshot background run demo-session capture screen
 captured screen current display
-sh-5.3$ shineyshot background attach MySession
+sh-5.3$ shineyshot background attach demo-session
 > arrow 0 0 320 240
 arrow drawn
 > ^D
 
 # Stop and clean up when finished
-sh-5.3$ shineyshot background stop MySession
-stop requested for MySession
+sh-5.3$ shineyshot background stop demo-session
+stop requested for demo-session
 ```
 
-Add `background serve` when embedding ShineyShot into another long-lived process. Set `SHINEYSHOT_SOCKET_DIR` so every service and helper points at the same directory, or pass `-dir` to individual commands when you need multiple sandboxes. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run MySession capture window "$1"` so scripts capture consistent evidence before processing.
+Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run demo-session capture window "$1"` so scripts capture consistent evidence before processing.
 
 ## Interactive Mode
 
