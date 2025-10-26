@@ -6,23 +6,36 @@
 
 ShineyShot brings capture and annotation tools together across four complementary modes so workflows can move from a quick markup to a fully scripted pipeline without switching apps. Updated screencaps for every workflow will land soon.
 
-## Global flags and configuration
+## Installation
 
-Enable desktop notifications at launch when you want audible or visual confirmation that an operation finished successfully:
+### Prerequisites
+
+ShineyShot relies on CGO-backed bindings for GLFW and `golang.org/x/mobile`. Install the system packages before compiling:
+
+- **Linux (Debian/Ubuntu):** `sudo apt-get install build-essential pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`.
+- **Linux (Fedora):** `sudo dnf install @development-tools pkgconfig mesa-libGL-devel libX11-devel libXrandr-devel wayland-devel libxkbcommon-devel`.
+- **macOS:** Ensure the Xcode Command Line Tools are installed (`xcode-select --install`) and install GLFW via Homebrew (`brew install glfw`).
+
+### Prebuilt releases
+
+Download signed artifacts for Linux from the [latest GitHub release](https://github.com/arran4/shineyshot/releases/latest). GoReleaser publishes:
+
+- `.tar.gz` archives for `linux` on `amd64`, `386`, `arm64`, and ARMv6/v7.
+- Native packages in `.deb`, `.rpm`, `.apk`, and Arch Linux (`.pkg.tar.zst`) formats.
+
+Install the package format that matches your distribution, or extract the archive and place the `shineyshot` binary somewhere on your `PATH`.
+
+### Build and install
+
+Clone the repository or update to the desired revision, then run the following commands from the project root:
 
 ```bash
-# Announce captures, saves, and clipboard copies
-shineyshot --notify-capture --notify-save --notify-copy snapshot capture window "Release Notes"
+go mod download
+go build ./cmd/shineyshot
+go install ./cmd/shineyshot
 ```
 
-Notification text and titles can be customised with environment variables:
-
-- `SHINEYSHOT_NOTIFY_TITLE` – overrides the notification title.
-- `SHINEYSHOT_NOTIFY_CAPTURE_TEXT` – template for capture alerts (receives the capture detail).
-- `SHINEYSHOT_NOTIFY_SAVE_TEXT` – template for save alerts (receives the saved path).
-- `SHINEYSHOT_NOTIFY_COPY_TEXT` – template for clipboard alerts (receives a short description).
-
-Background sockets default to `XDG_RUNTIME_DIR/shineyshot` on Linux or `~/.shineyshot/sockets` everywhere else. Set `SHINEYSHOT_SOCKET_DIR` (or pass `-dir`) to point the daemon and helpers somewhere specific.
+The final command places the compiled binary in `$(go env GOBIN)` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) so it is available on your `PATH`.
 
 ## UI Mode
 
@@ -242,6 +255,33 @@ rectangle drawn
 ```
 
 Launch the shell with `--include-decorations`, `--include-cursor`, and notification flags (for example, `--notify-copy`) to keep those preferences active for every capture command in the session.
+
+## Global flags and configuration
+
+Enable desktop notifications at launch when you want audible or visual confirmation that an operation finished successfully:
+
+```bash
+# Announce captures, saves, and clipboard copies
+shineyshot --notify-capture --notify-save --notify-copy snapshot capture window "Release Notes"
+```
+
+Notification text and titles can be customised with environment variables:
+
+- `SHINEYSHOT_NOTIFY_TITLE` – overrides the notification title.
+- `SHINEYSHOT_NOTIFY_CAPTURE_TEXT` – template for capture alerts (receives the capture detail).
+- `SHINEYSHOT_NOTIFY_SAVE_TEXT` – template for save alerts (receives the saved path).
+- `SHINEYSHOT_NOTIFY_COPY_TEXT` – template for clipboard alerts (receives a short description).
+
+Background sockets default to `XDG_RUNTIME_DIR/shineyshot` on Linux or `~/.shineyshot/sockets` everywhere else. Set `SHINEYSHOT_SOCKET_DIR` (or pass `-dir`) to point the daemon and helpers somewhere specific.
+
+
+## Testing
+
+First-time runs may spend additional time downloading Go modules before executing. Once dependencies are cached, run all checks with:
+
+```bash
+go test ./...
+```
 
 ## License
 
