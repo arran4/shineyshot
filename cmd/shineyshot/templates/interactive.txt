@@ -20,7 +20,7 @@ Available commands:
   tabs [list|switch|next|prev|close]   manage annotation tabs
   save FILE                  save the image to FILE
   savetmp                    save to /tmp with a unique filename
-  savepictures               save to your Pictures directory
+  savepictures               save to your Pictures directory (defaults to ~/Pictures)
   savehome                   save to your home directory
   copy                       copy the image to the clipboard
   windows                    list available windows and selector hints

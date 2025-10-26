@@ -213,7 +213,11 @@ func (i *interactiveCmd) printHelp() {
 	i.writeln(i.stdout, "  tabs [list|switch|next|prev|close]   manage annotation tabs")
 	i.writeln(i.stdout, "  save FILE                  save image to FILE")
 	i.writeln(i.stdout, "  savetmp                    save to /tmp with a unique filename")
-	i.writeln(i.stdout, "  savepictures               save to your Pictures directory")
+	picturesHelp := "save to your Pictures directory"
+	if dir, err := picturesDir(); err == nil {
+		picturesHelp = fmt.Sprintf("save to your Pictures directory (%s)", dir)
+	}
+	i.writeln(i.stdout, fmt.Sprintf("  savepictures               %s", picturesHelp))
 	i.writeln(i.stdout, "  savehome                   save to your home directory")
 	i.writeln(i.stdout, "  copy                       copy image to clipboard")
 	i.writeln(i.stdout, "  windows                    list available windows and selectors")
