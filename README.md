@@ -6,6 +6,24 @@
 
 ShineyShot brings capture and annotation tools together across four complementary modes so workflows can move from a quick markup to a fully scripted pipeline without switching apps. Updated screencaps for every workflow will land soon.
 
+## Global flags and configuration
+
+Enable desktop notifications at launch when you want audible or visual confirmation that an operation finished successfully:
+
+```bash
+# Announce captures, saves, and clipboard copies
+shineyshot --notify-capture --notify-save --notify-copy snapshot capture window "Release Notes"
+```
+
+Notification text and titles can be customised with environment variables:
+
+- `SHINEYSHOT_NOTIFY_TITLE` – overrides the notification title.
+- `SHINEYSHOT_NOTIFY_CAPTURE_TEXT` – template for capture alerts (receives the capture detail).
+- `SHINEYSHOT_NOTIFY_SAVE_TEXT` – template for save alerts (receives the saved path).
+- `SHINEYSHOT_NOTIFY_COPY_TEXT` – template for clipboard alerts (receives a short description).
+
+Background sockets default to `XDG_RUNTIME_DIR/shineyshot` on Linux or `~/.shineyshot/sockets` everywhere else. Set `SHINEYSHOT_SOCKET_DIR` (or pass `-dir`) to point the daemon and helpers somewhere specific.
+
 ## UI Mode
 
 Launch the graphical editor from any environment and control how it starts up with command-line flags.
@@ -14,8 +32,11 @@ Launch the graphical editor from any environment and control how it starts up wi
 # Open the editor directly on an existing image
 shineyshot annotate -file snapshot.png open
 
+# Paste from the clipboard directly into the editor
+shineyshot annotate -from-clipboard open
+
 # Capture the active window (or specify a selector) and jump straight into annotation
-shineyshot annotate capture window "Settings Panel"
+shineyshot annotate --shadow --shadow-radius 40 capture window "Settings Panel"
 
 # Start in capture region mode with a preset rectangle
 shineyshot annotate capture region 0,0,1440,900
@@ -55,6 +76,10 @@ Nested commands can still set `-file` or `-output` to redirect work elsewhere:
 ```bash
 sh-5.3$ shineyshot file -file snapshot.png draw -output annotated.png arrow 0 0 320 240
 saved /home/user/Pictures/annotated.png
+
+# Read from the clipboard, draw markup, and keep the result in the clipboard
+sh-5.3$ shineyshot file -file clip.png -from-clipboard draw -to-clipboard rect 40 40 480 320
+copied annotated clip.png to clipboard
 ```
 
 ### Capture screenshots on Linux
@@ -76,13 +101,24 @@ sh-5.3$ shineyshot file -file screenshot.png capture region 0,0,640,480
 Provide an optional selector argument—or `-select` for scripts—to target a specific display or window.
 Window captures fall back to the active window when no selector is provided. Supply regions with the `-rect` flag or trailing `x0,y0,x1,y1` coordinates.
 
-Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
+Pass `--stdout` to write the PNG bytes to stdout instead of creating a file. Add `--to-clipboard` when you want to skip disk altogether and push the capture straight into the clipboard for pasting elsewhere.
 
 When the compositor supports it, use `--include-decorations` to request window frames and `--include-cursor` to embed the pointer into the screenshot. Interactive mode accepts the same flags so you can keep the preference while exploring the shell.
 
+`snapshot` captures also honour the drop-shadow flags discussed above so you can add framing immediately:
+
+```bash
+sh-5.3$ shineyshot snapshot --shadow --shadow-offset 24,24 capture window firefox
+```
+
 ### Draw quick markup
 
-Apply lightweight annotations to an existing image. Lines and arrows expand the canvas as needed so their endpoints stay visible.
+Apply lightweight annotations to an existing image. Lines and arrows expand the canvas as needed so their endpoints stay visible. Every draw command supports clipboard input/output so you can stay entirely in-memory:
+
+```bash
+sh-5.3$ shineyshot draw -from-clipboard -output bug.png rect 10 10 320 200
+sh-5.3$ shineyshot draw -file bug.png -to-clipboard text 60 120 "Needs padding"
+```
 
 Shapes accept the following coordinate formats. Each row pairs the argument list with a complete command you can paste into a script or terminal session:
 
@@ -94,7 +130,7 @@ Shapes accept the following coordinate formats. Each row pairs the argument list
 | circle | `cx cy radius`    | `shineyshot file -file input.png draw circle 120 120 30` |
 | number | `x y value`       | `shineyshot file -file input.png draw number 40 80 1` |
 | text   | `x y "string"`   | `shineyshot file -file input.png draw text 60 120 "Review"` |
-| mask   | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw mask 20 20 180 140` |
+| mask   | `x0 y0 x1 y1`     | `shineyshot file -file input.png draw -mask-opacity 128 mask 20 20 180 140` |
 
 ### CLI automation example
 
@@ -147,7 +183,7 @@ sh-5.3$ shineyshot background stop MySession
 stop requested for MySession
 ```
 
-Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run MySession capture window "$1"` so scripts capture consistent evidence before processing.
+Add `background serve` when embedding ShineyShot into another long-lived process. Set `SHINEYSHOT_SOCKET_DIR` so every service and helper points at the same directory, or pass `-dir` to individual commands when you need multiple sandboxes. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run MySession capture window "$1"` so scripts capture consistent evidence before processing.
 
 ## Interactive Mode
 
@@ -205,7 +241,7 @@ captured screen current display
 rectangle drawn
 ```
 
-Launch the shell with `--include-decorations` or `--include-cursor` to keep those preferences active for every capture command in the session.
+Launch the shell with `--include-decorations`, `--include-cursor`, and notification flags (for example, `--notify-copy`) to keep those preferences active for every capture command in the session.
 
 ## License
 
