@@ -23,7 +23,7 @@ shineyshot annotate capture region 0,0,1440,900
 
 ### Screenshot
 
-_Annotated workflow screenshot coming soon._
+![annotate-window.png](doc/annotate-window.png)
 
 ## Modes at a Glance
 

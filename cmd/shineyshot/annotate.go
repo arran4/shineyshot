@@ -6,6 +6,7 @@ import (
 	"image/draw"
 	"image/png"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
@@ -130,7 +131,26 @@ func (a *annotateCmd) Run() error {
 		img = image.NewRGBA(dec.Bounds())
 		draw.Draw(img, img.Bounds(), dec, image.Point{}, draw.Src)
 	}
-	opts := []appstate.Option{appstate.WithImage(img)}
+	detail := ""
+	fileName := ""
+	if a.mode == "open-file" && a.file != "" {
+		fileName = filepath.Base(a.file)
+	}
+	if a.output != "" {
+		detail = filepath.Base(a.output)
+	}
+	lastSaved := detail
+	opts := []appstate.Option{
+    appstate.WithImage(img),
+		appstate.WithOutput(a.output),
+		appstate.WithTitle(windowTitle(titleOptions{
+			File:      fileName,
+			Mode:      "Annotate",
+			Detail:    detail,
+			Tab:       "Tab 1",
+			LastSaved: lastSaved,
+    })),
+  }
 	if strings.TrimSpace(a.output) != "" {
 		opts = append(opts, appstate.WithOutput(a.output))
 	}
