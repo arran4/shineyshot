@@ -82,6 +82,25 @@ type Tab struct {
 	ShadowApplied bool
 }
 
+// TabSummary provides identifying information for an open annotation tab.
+type TabSummary struct {
+	Index int
+	Title string
+}
+
+// TabsState reports the collection of tabs alongside the active index.
+type TabsState struct {
+	Tabs    []TabSummary
+	Current int
+}
+
+// TabChange describes a tab update emitted from the UI.
+type TabChange struct {
+	TabsState
+	Image    *image.RGBA
+	WidthIdx int
+}
+
 const handleSize = 8
 
 type cropAction int

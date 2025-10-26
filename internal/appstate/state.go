@@ -46,6 +46,10 @@ type AppState struct {
 	settingsMu sync.Mutex
 	settingsFn func(colorIdx, widthIdx int)
 
+	tabMu    sync.RWMutex
+	tabState TabChange
+	tabFn    func(TabChange)
+
 	onClose   func()
 	closeOnce sync.Once
 }
@@ -125,12 +129,26 @@ func New(opts ...Option) *AppState {
 	if a.Title == "" {
 		a.Title = ProgramTitle
 	}
+	a.tabState.Current = -1
 	return a
 }
 
 type controlEvent struct {
 	ColorIdx *int
 	WidthIdx *int
+	Tab      *tabControl
+}
+
+type tabAction int
+
+const (
+	tabActionActivate tabAction = iota
+	tabActionClose
+)
+
+type tabControl struct {
+	action tabAction
+	index  int
 }
 
 // NotifyImageChanged requests a repaint of the UI when the image mutates.
@@ -187,9 +205,116 @@ func (a *AppState) setControlSender(fn func(controlEvent)) {
 	a.settingsMu.Unlock()
 }
 
+// SetTabListener registers a callback that fires when the active tab changes.
+func (a *AppState) SetTabListener(fn func(TabChange)) {
+	a.tabMu.Lock()
+	a.tabFn = fn
+	state := copyTabChange(a.tabState)
+	a.tabMu.Unlock()
+	if fn != nil && state.Image != nil {
+		fn(state)
+	}
+}
+
+// TabsState returns a snapshot of the current tabs and selection.
+func (a *AppState) TabsState() TabsState {
+	a.tabMu.RLock()
+	state := copyTabsState(a.tabState.TabsState)
+	a.tabMu.RUnlock()
+	return state
+}
+
+// ActivateTab requests that the UI switches to the specified tab index.
+func (a *AppState) ActivateTab(index int) error {
+	tabs := a.TabsState()
+	if len(tabs.Tabs) == 0 {
+		return fmt.Errorf("no tabs available")
+	}
+	if index < 0 || index >= len(tabs.Tabs) {
+		return fmt.Errorf("tab %d does not exist", index+1)
+	}
+	a.settingsMu.Lock()
+	sender := a.sendControl
+	a.settingsMu.Unlock()
+	if sender == nil {
+		return fmt.Errorf("annotation window not open")
+	}
+	sender(controlEvent{Tab: &tabControl{action: tabActionActivate, index: index}})
+	return nil
+}
+
+// CloseTab requests that the UI closes the specified tab. When index is
+// negative the currently active tab is closed.
+func (a *AppState) CloseTab(index int) error {
+	tabs := a.TabsState()
+	if len(tabs.Tabs) <= 1 {
+		return fmt.Errorf("cannot close the only tab")
+	}
+	if index < 0 {
+		index = tabs.Current
+	}
+	if index < 0 || index >= len(tabs.Tabs) {
+		return fmt.Errorf("tab %d does not exist", index+1)
+	}
+	a.settingsMu.Lock()
+	sender := a.sendControl
+	a.settingsMu.Unlock()
+	if sender == nil {
+		return fmt.Errorf("annotation window not open")
+	}
+	sender(controlEvent{Tab: &tabControl{action: tabActionClose, index: index}})
+	return nil
+}
+
+func copyTabsState(state TabsState) TabsState {
+	dup := state
+	dup.Tabs = append([]TabSummary(nil), state.Tabs...)
+	return dup
+}
+
+func copyTabChange(change TabChange) TabChange {
+	dup := change
+	dup.Tabs = append([]TabSummary(nil), change.Tabs...)
+	return dup
+}
+
+func (a *AppState) updateTabsState(tabs []Tab, current int) {
+	change := TabChange{
+		TabsState: TabsState{
+			Tabs:    make([]TabSummary, len(tabs)),
+			Current: -1,
+		},
+	}
+	for idx, tb := range tabs {
+		title := tb.Title
+		if title == "" {
+			title = fmt.Sprintf("%d", idx+1)
+		}
+		change.Tabs[idx] = TabSummary{Index: idx, Title: title}
+	}
+	if current >= 0 && current < len(tabs) {
+		change.Current = current
+		change.Image = tabs[current].Image
+		change.WidthIdx = tabs[current].WidthIdx
+	}
+	stored := copyTabChange(change)
+	a.tabMu.Lock()
+	a.tabState = stored
+	listener := a.tabFn
+	a.tabMu.Unlock()
+	if listener != nil && change.Image != nil {
+		listener(copyTabChange(change))
+	}
+}
+
 func (a *AppState) notifyClose() {
 	a.closeOnce.Do(func() {
 		a.setControlSender(nil)
+		a.tabMu.Lock()
+		a.tabFn = nil
+		a.tabState = TabChange{}
+		a.tabState.Current = -1
+		a.tabMu.Unlock()
 		if a.onClose != nil {
 			a.onClose()
 		}
@@ -307,6 +432,7 @@ func (a *AppState) Main(s screen.Screen) {
 	col := paletteColorAt(colorIdx)
 	tabs[current].Zoom = fitZoom(rgba, width, height)
 	a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
+	a.updateTabsState(tabs, current)
 
 	annotationEnabled := a.Mode != ModePreview
 
@@ -600,15 +726,45 @@ func (a *AppState) Main(s screen.Screen) {
 		e := w.NextEvent()
 		switch e := e.(type) {
 		case controlEvent:
+			repaint := false
 			if e.ColorIdx != nil {
 				colorIdx = clampColorIndex(*e.ColorIdx)
 				col = paletteColorAt(colorIdx)
+				repaint = true
 			}
 			if e.WidthIdx != nil {
 				tabs[current].WidthIdx = clampWidthIndex(*e.WidthIdx)
+				repaint = true
 			}
-			a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
-			w.Send(paint.Event{})
+			if e.Tab != nil {
+				switch e.Tab.action {
+				case tabActionActivate:
+					idx := e.Tab.index
+					if idx >= 0 && idx < len(tabs) {
+						if idx != current {
+							current = idx
+							repaint = true
+						}
+					}
+				case tabActionClose:
+					idx := e.Tab.index
+					if idx >= 0 && idx < len(tabs) && len(tabs) > 1 {
+						tabs = append(tabs[:idx], tabs[idx+1:]...)
+						if current >= len(tabs) {
+							current = len(tabs) - 1
+						} else if idx <= current && current > 0 {
+							current--
+						}
+						repaint = true
+					}
+				}
+			}
+			if len(tabs) > 0 {
+				a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
+			}
+			if repaint {
+				w.Send(paint.Event{})
+			}
 		case lifecycle.Event:
 			if e.To == lifecycle.StageDead {
 				paintMu.Lock()
@@ -623,6 +779,7 @@ func (a *AppState) Main(s screen.Screen) {
 			height = e.HeightPx
 			w.Send(paint.Event{})
 		case paint.Event:
+			a.updateTabsState(tabs, current)
 			paintMu.Lock()
 			if paintCancel != nil {
 				if dropCount < frameDropThreshold {
