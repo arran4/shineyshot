@@ -33,17 +33,17 @@ func portalScreenshot(interactive bool, captureOpts CaptureOptions) (*image.RGBA
 	var handle dbus.ObjectPath
 	call := obj.Call("org.freedesktop.portal.Screenshot.Screenshot", 0, "", opts)
 	if call.Err != nil {
-		return nil, call.Err
+		return nil, fmt.Errorf("portal screenshot call: %w", call.Err)
 	}
 	if err := call.Store(&handle); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("portal screenshot response: %w", err)
 	}
 
 	sigc := make(chan *dbus.Signal, 1)
 	conn.Signal(sigc)
 	rule := fmt.Sprintf("type='signal',interface='org.freedesktop.portal.Request',member='Response',path='%s'", handle)
 	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule).Err; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("portal screenshot subscribe: %w", err)
 	}
 	defer conn.BusObject().Call("org.freedesktop.DBus.RemoveMatch", 0, rule)
 
@@ -56,7 +56,7 @@ func portalScreenshot(interactive bool, captureOpts CaptureOptions) (*image.RGBA
 					path := strings.TrimPrefix(uri, "file://")
 					img, err := loadPNG(path)
 					if err != nil {
-						return nil, err
+						return nil, fmt.Errorf("portal screenshot image: %w", err)
 					}
 					return img, nil
 				}
@@ -64,7 +64,7 @@ func portalScreenshot(interactive bool, captureOpts CaptureOptions) (*image.RGBA
 			break
 		}
 	}
-	return nil, fmt.Errorf("screenshot failed")
+	return nil, fmt.Errorf("portal screenshot: response missing image data")
 }
 
 func newPortalHandleToken() string {
@@ -88,7 +88,7 @@ func portalScreenshotOptions(interactive bool, captureOpts CaptureOptions) map[s
 func loadPNG(path string) (*image.RGBA, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer func() {
 		if cerr := f.Close(); cerr != nil {
@@ -103,7 +103,7 @@ func loadPNG(path string) (*image.RGBA, error) {
 
 	img, err := png.Decode(f)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)

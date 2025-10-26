@@ -12,8 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/example/shineyshot/internal/capture"
 )
 
 type snapshotCmd struct {
@@ -77,7 +75,7 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 func (s *snapshotCmd) Run() error {
 	img, err := s.capture()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to capture %s: %w", s.mode, err)
 	}
 	if s.root != nil {
 		detail := s.describeCapture()
@@ -89,7 +87,7 @@ func (s *snapshotCmd) Run() error {
 	} else {
 		f, err := os.Create(s.output)
 		if err != nil {
-			return err
+			return fmt.Errorf("create output %q: %w", s.output, err)
 		}
 		defer func() {
 			if cerr := f.Close(); cerr != nil {
@@ -99,7 +97,10 @@ func (s *snapshotCmd) Run() error {
 		w = f
 	}
 	if err := png.Encode(w, img); err != nil {
-		return err
+		if s.stdout {
+			return fmt.Errorf("write PNG to stdout: %w", err)
+		}
+		return fmt.Errorf("write PNG to %q: %w", s.output, err)
 	}
 	if s.stdout {
 		fmt.Fprintln(os.Stderr, "wrote PNG data to stdout")
@@ -120,18 +121,18 @@ func (s *snapshotCmd) capture() (*image.RGBA, error) {
 	opts := s.captureOptions()
 	switch s.mode {
 	case "screen":
-		return capture.CaptureScreenshot(s.selector, opts)
+		return captureScreenshotFn(s.selector, opts)
 	case "window":
-		return capture.CaptureWindow(s.selector, opts)
+		return captureWindowFn(s.selector, opts)
 	case "region":
 		if strings.TrimSpace(s.rect) == "" {
-			return capture.CaptureRegion(opts)
+			return captureRegionFn(opts)
 		}
 		rect, err := parseRect(s.rect)
 		if err != nil {
 			return nil, err
 		}
-		return capture.CaptureRegionRect(rect, opts)
+		return captureRegionRectFn(rect, opts)
 	default:
 		return nil, errors.New("unsupported capture mode")
 	}

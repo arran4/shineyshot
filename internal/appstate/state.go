@@ -292,15 +292,27 @@ func (a *AppState) Main(s screen.Screen) {
 		hoverNumber = -1
 		hoverTextSize = -1
 
+		setToast := func(text string, dur time.Duration) {
+			message = text
+			log.Print(text)
+			messageUntil = time.Now().Add(dur)
+		}
+
+		infoToast := func(text string) {
+			setToast(text, 2*time.Second)
+		}
+
+		errorToast := func(format string, args ...interface{}) {
+			setToast(fmt.Sprintf(format, args...), 4*time.Second)
+		}
+
 		registerCopy := func() {
 			register("copy", shortcutList{{Rune: 'c', Modifiers: key.ModControl}}, func() {
 				if err := clipboard.WriteImage(tabs[current].Image); err != nil {
-					log.Printf("copy: %v", err)
+					errorToast("copy failed: %v", err)
 					return
 				}
-				message = "image copied to clipboard"
-				log.Print(message)
-				messageUntil = time.Now().Add(2 * time.Second)
+				infoToast("image copied to clipboard")
 			})
 		}
 
@@ -308,23 +320,21 @@ func (a *AppState) Main(s screen.Screen) {
 			register("save", shortcutList{{Rune: 's', Modifiers: key.ModControl}}, func() {
 				out, err := os.Create(output)
 				if err != nil {
-					log.Printf("save: %v", err)
+					errorToast("save failed: %v", err)
 					return
 				}
 				if err := png.Encode(out, tabs[current].Image); err != nil {
-					log.Printf("save: %v", err)
+					errorToast("save failed: %v", err)
 					if cerr := out.Close(); cerr != nil {
 						log.Printf("save: closing file: %v", cerr)
 					}
 					return
 				}
 				if err := out.Close(); err != nil {
-					log.Printf("save: closing file: %v", err)
+					errorToast("save failed closing file: %v", err)
 					return
 				}
-				message = fmt.Sprintf("saved %s", output)
-				log.Print(message)
-				messageUntil = time.Now().Add(2 * time.Second)
+				infoToast(fmt.Sprintf("saved %s", output))
 			})
 		}
 
@@ -388,15 +398,13 @@ func (a *AppState) Main(s screen.Screen) {
 		register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
 			img, err := capture.CaptureScreenshot("", capture.CaptureOptions{})
 			if err != nil {
-				log.Printf("capture screenshot: %v", err)
+				errorToast("capture failed: %v", err)
 				return
 			}
 			tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
 			current = len(tabs) - 1
 			tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
-			message = "captured screenshot"
-			log.Print(message)
-			messageUntil = time.Now().Add(2 * time.Second)
+			infoToast("captured screenshot")
 		})
 
 		register("dup", shortcutList{{Rune: 'u', Modifiers: key.ModControl}}, func() {
@@ -409,16 +417,14 @@ func (a *AppState) Main(s screen.Screen) {
 		register("paste", shortcutList{{Rune: 'v', Modifiers: key.ModControl}}, func() {
 			img, err := clipboard.ReadImage()
 			if err != nil {
-				log.Printf("paste: %v", err)
+				errorToast("paste failed: %v", err)
 				return
 			}
 			rgba := image.NewRGBA(img.Bounds())
 			draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
 			tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
 			current = len(tabs) - 1
-			message = "pasted new tab"
-			log.Print(message)
-			messageUntil = time.Now().Add(2 * time.Second)
+			infoToast("pasted new tab")
 		})
 
 		register("delete", shortcutList{{Rune: 'd', Modifiers: key.ModControl}}, func() {
