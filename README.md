@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icons/shineyshot-128.png" alt="ShineyShot icon" width="128" />
+</p>
+
 # ShineyShot
 
 ShineyShot brings capture and annotation tools together across four complementary modes so workflows can move from a quick markup to a fully scripted pipeline without switching apps. Updated screencaps for every workflow will land soon.
