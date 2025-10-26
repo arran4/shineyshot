@@ -44,6 +44,9 @@ type interactiveCmd struct {
 
 	backgroundSession string
 	backgroundDir     string
+
+	includeDecorations bool
+	includeCursor      bool
 }
 
 func (i *interactiveCmd) writeln(w io.Writer, args ...any) {
@@ -98,6 +101,13 @@ func newInteractiveCmd(r *root) *interactiveCmd {
 		stdin:             os.Stdin,
 		stdout:            os.Stdout,
 		stderr:            os.Stderr,
+	}
+}
+
+func (i *interactiveCmd) captureOptions() capture.CaptureOptions {
+	return capture.CaptureOptions{
+		IncludeDecorations: i.includeDecorations,
+		IncludeCursor:      i.includeCursor,
 	}
 }
 
@@ -237,6 +247,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		err    error
 		target string
 	)
+	opts := i.captureOptions()
 	switch mode {
 	case "screen":
 		if len(params) >= 1 && strings.EqualFold(params[0], "list") {
@@ -247,9 +258,9 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		if len(params) >= 1 {
 			display = strings.Join(params, " ")
 		}
-		img, err = capture.CaptureScreenshot(display)
+		img, err = capture.CaptureScreenshot(display, opts)
 		if err != nil && display == "" {
-			img, err = capture.CaptureScreenshot("0")
+			img, err = capture.CaptureScreenshot("0", opts)
 			if err == nil {
 				target = "display 0"
 			}
@@ -278,7 +289,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			selector = strings.Join(params, " ")
 		}
 		var info capture.WindowInfo
-		img, info, err = capture.CaptureWindowDetailed(selector)
+		img, info, err = capture.CaptureWindowDetailed(selector, opts)
 		if err != nil {
 			i.writeln(i.stderr, err)
 			i.printWindowList()
@@ -321,7 +332,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			monitor.Rect.Min.X+coords[0]+coords[2],
 			monitor.Rect.Min.Y+coords[1]+coords[3],
 		)
-		img, err = capture.CaptureRegionRect(rect)
+		img, err = capture.CaptureRegionRect(rect, opts)
 		if err == nil {
 			target = fmt.Sprintf("%s @ %dx%d+%d,%d", formatMonitorName(monitor), coords[2], coords[3], coords[0], coords[1])
 		}
@@ -665,12 +676,25 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 		output := i.output
 		colorIdx := i.colorIdx
 		widthIdx := i.widthIdx
+		detail := ""
+		if output != "" {
+			detail = filepath.Base(output)
+		}
+		background := i.backgroundSession
 		i.mu.Unlock()
 		st := appstate.New(
 			appstate.WithImage(dup),
 			appstate.WithOutput(output),
 			appstate.WithColorIndex(colorIdx),
 			appstate.WithWidthIndex(widthIdx),
+			appstate.WithMode(appstate.ModePreview),
+			appstate.WithTitle(windowTitle(titleOptions{
+				Mode:       "Preview",
+				Detail:     detail,
+				Tab:        "Tab 1",
+				LastSaved:  detail,
+				Background: background,
+			})),
 		)
 		go st.Run()
 		i.writeln(i.stdout, "preview window opened")
@@ -694,11 +718,22 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 		i.mu.Unlock()
 		i.r.state = nil
 	}
+	detail := ""
+	if output != "" {
+		detail = filepath.Base(output)
+	}
 	st = appstate.New(
 		appstate.WithImage(img),
 		appstate.WithOutput(output),
 		appstate.WithColorIndex(colorIdx),
 		appstate.WithWidthIndex(widthIdx),
+		appstate.WithTitle(windowTitle(titleOptions{
+			Mode:       "Annotate",
+			Detail:     detail,
+			Tab:        "Tab 1",
+			LastSaved:  detail,
+			Background: i.backgroundSession,
+		})),
 		appstate.WithSettingsListener(func(cIdx, wIdx int) {
 			i.mu.Lock()
 			i.colorIdx = cIdx
