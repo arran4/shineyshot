@@ -658,12 +658,24 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 		output := i.output
 		colorIdx := i.colorIdx
 		widthIdx := i.widthIdx
+		detail := ""
+		if output != "" {
+			detail = filepath.Base(output)
+		}
+		background := i.backgroundSession
 		i.mu.Unlock()
 		st := appstate.New(
 			appstate.WithImage(dup),
 			appstate.WithOutput(output),
 			appstate.WithColorIndex(colorIdx),
 			appstate.WithWidthIndex(widthIdx),
+			appstate.WithTitle(windowTitle(titleOptions{
+				Mode:       "Preview",
+				Detail:     detail,
+				Tab:        "Tab 1",
+				LastSaved:  detail,
+				Background: background,
+			})),
 		)
 		go st.Run()
 		i.writeln(i.stdout, "preview window opened")
@@ -687,11 +699,22 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 		i.mu.Unlock()
 		i.r.state = nil
 	}
+	detail := ""
+	if output != "" {
+		detail = filepath.Base(output)
+	}
 	st = appstate.New(
 		appstate.WithImage(img),
 		appstate.WithOutput(output),
 		appstate.WithColorIndex(colorIdx),
 		appstate.WithWidthIndex(widthIdx),
+		appstate.WithTitle(windowTitle(titleOptions{
+			Mode:       "Annotate",
+			Detail:     detail,
+			Tab:        "Tab 1",
+			LastSaved:  detail,
+			Background: i.backgroundSession,
+		})),
 		appstate.WithSettingsListener(func(cIdx, wIdx int) {
 			i.mu.Lock()
 			i.colorIdx = cIdx

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/example/shineyshot/assets"
 	"golang.org/x/exp/shiny/screen"
 	"golang.org/x/mobile/event/key"
 )
@@ -27,7 +28,14 @@ const (
 	bottomHeight = 24
 )
 
+const ProgramTitle = "ShineyShot"
+
 var toolbarWidth = 48
+
+var (
+	toolbarIconOnce sync.Once
+	toolbarIcon     image.Image
+)
 
 // frameDropThreshold specifies how many consecutive frames can be canceled
 // before a draw is allowed to complete to keep the UI responsive.
@@ -170,6 +178,19 @@ func fitZoom(img *image.RGBA, winW, winH int) float64 {
 		return zx
 	}
 	return zy
+}
+
+func toolbarIconImage() image.Image {
+	toolbarIconOnce.Do(func() {
+		for _, size := range []int{24, 22, 16, 32} {
+			img, err := assets.IconImage(size)
+			if err == nil {
+				toolbarIcon = img
+				return
+			}
+		}
+	})
+	return toolbarIcon
 }
 
 // imageRect returns the destination rectangle for drawing the image. It anchors
@@ -583,15 +604,30 @@ func numberBoxHeight(size int) int {
 	return h
 }
 
-func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
+func drawTabs(dst *image.RGBA, tabs []Tab, current int, title string) {
 	// background for title area
 	draw.Draw(dst, image.Rect(0, 0, toolbarWidth, tabHeight),
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 
 	// program title in the top-left corner
-	title := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
-		Dot: fixed.P(4, 16)}
-	title.DrawString("ShineyShot")
+	if title == "" {
+		title = ProgramTitle
+	}
+	icon := toolbarIconImage()
+	textX := 4
+	if icon != nil {
+		bounds := icon.Bounds()
+		iconY := (tabHeight - bounds.Dy()) / 2
+		if iconY < 0 {
+			iconY = 0
+		}
+		rect := image.Rect(textX, iconY, textX+bounds.Dx(), iconY+bounds.Dy())
+		draw.Draw(dst, rect, icon, bounds.Min, draw.Over)
+		textX = rect.Max.X + 4
+	}
+	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+		Dot: fixed.P(textX, 16)}
+	d.DrawString(title)
 
 	tabButtons = tabButtons[:0]
 	x := toolbarWidth
@@ -1068,6 +1104,7 @@ type paintState struct {
 	message         string
 	messageUntil    time.Time
 	handleShortcut  func(string)
+	title           string
 }
 
 func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintState) {
@@ -1119,7 +1156,7 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 		return
 	}
 
-	drawTabs(b.RGBA(), st.tabs, st.current)
+	drawTabs(b.RGBA(), st.tabs, st.current, st.title)
 	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx)
 	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut)
 
