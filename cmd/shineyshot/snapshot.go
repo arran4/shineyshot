@@ -23,6 +23,9 @@ type snapshotCmd struct {
 	stdout             bool
 	toClipboard        bool
 	mode               string
+	display            string
+	window             string
+	region             string
 	selector           string
 	rect               string
 	includeDecorations bool
@@ -46,6 +49,10 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	fs.Usage = usageFunc(s)
 	defaults := render.DefaultShadowOptions()
 	fs.StringVar(&s.output, "output", "screenshot.png", "write the capture to this file path")
+	fs.StringVar(&s.mode, "mode", "", "capture mode: screen, window, or region")
+	fs.StringVar(&s.display, "display", "", "target display selector for screen captures")
+	fs.StringVar(&s.window, "window", "", "target window selector for window captures")
+	fs.StringVar(&s.region, "region", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
 	fs.BoolVar(&s.stdout, "stdout", false, "write PNG data to stdout")
 	fs.BoolVar(&s.toClipboard, "to-clipboard", false, "copy the capture to the clipboard")
 	fs.BoolVar(&s.toClipboard, "to-clip", false, "copy the capture to the clipboard (alias)")
@@ -69,29 +76,38 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 		return nil, fmt.Errorf("-stdout cannot be used with -to-clipboard")
 	}
 	operands := fs.Args()
-	if len(operands) == 0 {
-		return nil, &UsageError{of: s}
-	}
-	if strings.EqualFold(operands[0], "capture") {
+	if len(operands) > 0 && strings.EqualFold(operands[0], "capture") {
 		operands = operands[1:]
 	}
-	if len(operands) == 0 {
-		return nil, &UsageError{of: s}
+	if strings.TrimSpace(s.mode) == "" {
+		if len(operands) == 0 {
+			return nil, &UsageError{of: s}
+		}
+		s.mode = strings.ToLower(strings.TrimSpace(operands[0]))
+		operands = operands[1:]
+	} else {
+		s.mode = strings.ToLower(strings.TrimSpace(s.mode))
 	}
-	s.mode = strings.ToLower(strings.TrimSpace(operands[0]))
 	switch s.mode {
 	case "screen", "window", "region":
 	default:
 		return nil, &UsageError{of: s}
 	}
-	if len(operands) > 1 {
-		arg := strings.TrimSpace(strings.Join(operands[1:], " "))
-		if s.mode == "region" {
-			if s.rect == "" {
-				s.rect = arg
+	if len(operands) > 0 {
+		arg := strings.TrimSpace(strings.Join(operands, " "))
+		switch s.mode {
+		case "screen":
+			if s.display == "" && s.selector == "" {
+				s.display = arg
 			}
-		} else if s.selector == "" {
-			s.selector = arg
+		case "window":
+			if s.window == "" && s.selector == "" {
+				s.window = arg
+			}
+		case "region":
+			if s.region == "" && s.rect == "" {
+				s.region = arg
+			}
 		}
 	}
 	return s, nil
@@ -164,14 +180,17 @@ func (s *snapshotCmd) capture() (*image.RGBA, error) {
 	opts := s.captureOptions()
 	switch s.mode {
 	case "screen":
-		return captureScreenshotFn(s.selector, opts)
+		target := firstNonEmpty(s.display, s.selector)
+		return captureScreenshotFn(target, opts)
 	case "window":
-		return captureWindowFn(s.selector, opts)
+		target := firstNonEmpty(s.window, s.selector)
+		return captureWindowFn(target, opts)
 	case "region":
-		if strings.TrimSpace(s.rect) == "" {
+		region := firstNonEmpty(s.region, s.rect)
+		if strings.TrimSpace(region) == "" {
 			return captureRegionFn(opts)
 		}
-		rect, err := parseRect(s.rect)
+		rect, err := parseRect(region)
 		if err != nil {
 			return nil, err
 		}
@@ -185,16 +204,19 @@ func (s *snapshotCmd) describeCapture() string {
 	mode := strings.TrimSpace(s.mode)
 	switch mode {
 	case "screen":
-		if strings.TrimSpace(s.selector) != "" {
-			return fmt.Sprintf("screen %s", s.selector)
+		target := strings.TrimSpace(firstNonEmpty(s.display, s.selector))
+		if target != "" {
+			return fmt.Sprintf("screen %s", target)
 		}
 	case "window":
-		if strings.TrimSpace(s.selector) != "" {
-			return fmt.Sprintf("window %s", s.selector)
+		target := strings.TrimSpace(firstNonEmpty(s.window, s.selector))
+		if target != "" {
+			return fmt.Sprintf("window %s", target)
 		}
 	case "region":
-		if strings.TrimSpace(s.rect) != "" {
-			return fmt.Sprintf("region %s", s.rect)
+		region := strings.TrimSpace(firstNonEmpty(s.region, s.rect))
+		if region != "" {
+			return fmt.Sprintf("region %s", region)
 		}
 	}
 	if mode == "" {
@@ -246,6 +268,15 @@ func parseShadowOffset(val string) (image.Point, error) {
 
 func formatShadowOffset(pt image.Point) string {
 	return fmt.Sprintf("%d,%d", pt.X, pt.Y)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func parseRect(val string) (image.Rectangle, error) {
