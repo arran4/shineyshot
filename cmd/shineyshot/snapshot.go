@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/example/shineyshot/internal/capture"
+	"github.com/example/shineyshot/internal/clipboard"
 )
 
 type snapshotCmd struct {
