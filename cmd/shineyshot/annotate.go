@@ -137,7 +137,7 @@ func (a *annotateCmd) Run() error {
 	}
 	detail := ""
 	fileName := ""
-	if a.mode == "open-file" && a.file != "" {
+	if a.action == "open" && a.file != "" {
 		fileName = filepath.Base(a.file)
 	}
 	if a.output != "" {
@@ -145,7 +145,7 @@ func (a *annotateCmd) Run() error {
 	}
 	lastSaved := detail
 	opts := []appstate.Option{
-    appstate.WithImage(img),
+		appstate.WithImage(img),
 		appstate.WithOutput(a.output),
 		appstate.WithTitle(windowTitle(titleOptions{
 			File:      fileName,
@@ -153,8 +153,8 @@ func (a *annotateCmd) Run() error {
 			Detail:    detail,
 			Tab:       "Tab 1",
 			LastSaved: lastSaved,
-    })),
-  }
+		})),
+	}
 	if strings.TrimSpace(a.output) != "" {
 		opts = append(opts, appstate.WithOutput(a.output))
 	}
