@@ -117,54 +117,10 @@ func (x11Backend) CaptureWindowImage(id uint32) (*image.RGBA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("window pixels: %w", err)
 	}
-	if len(reply.Data) == 0 {
-		return nil, fmt.Errorf("window pixels: empty image data")
-	}
 
-	bitsPerPixel := 0
-	for _, format := range setup.PixmapFormats {
-		if format.Depth == reply.Depth {
-			bitsPerPixel = int(format.BitsPerPixel)
-			break
-		}
-	}
-	if bitsPerPixel == 0 {
-		return nil, fmt.Errorf("unsupported window depth %d", reply.Depth)
-	}
-	bytesPerPixel := bitsPerPixel / 8
-	if bytesPerPixel < 3 {
-		return nil, fmt.Errorf("unsupported pixel format %d bpp", bitsPerPixel)
-	}
-
-	if height == 0 {
-		return nil, fmt.Errorf("window pixels: invalid height")
-	}
-	stride := len(reply.Data) / height
-	if stride*height != len(reply.Data) {
-		return nil, fmt.Errorf("window pixels: unexpected stride")
-	}
-
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		row := reply.Data[y*stride : (y+1)*stride]
-		for x := 0; x < width; x++ {
-			off := x * bytesPerPixel
-			if off+3 > len(row) {
-				break
-			}
-			b := row[off]
-			g := row[off+1]
-			r := row[off+2]
-			a := byte(0xFF)
-			if bytesPerPixel >= 4 && off+3 < len(row) {
-				a = row[off+3]
-			}
-			pix := img.PixOffset(x, y)
-			img.Pix[pix+0] = r
-			img.Pix[pix+1] = g
-			img.Pix[pix+2] = b
-			img.Pix[pix+3] = a
-		}
+	img, err := xImageToRGBA(setup, reply, width, height, "window")
+	if err != nil {
+		return nil, err
 	}
 	return img, nil
 }
