@@ -72,6 +72,18 @@ Provide an optional selector argument—or `-select` for scripts—to target a s
 
 Pass `--stdout` to write the PNG bytes to stdout instead of creating a file.
 
+### Drop shadow output
+
+Give captures more separation from the background by enabling the optional drop shadow:
+
+```bash
+shineyshot snapshot capture window "Terminal" --shadow --shadow-offset 48,48 --shadow-radius 32 --shadow-opacity 0.4
+```
+
+When the flag is present the export grows just enough to include a soft shadow that is offset behind the capture. Without the flag the PNG matches the original bounds exactly, while the shadowed variant adds a gentle gradient halo so the subject floats above solid backgrounds—especially useful when pasting into docs or slides alongside text blocks.
+
+While editing, the toolbar now includes an **$:Shadow** button (or press `$`) to apply the same drop shadow once to the active tab. If you passed custom `--shadow-*` values on launch those defaults carry into the editor, and the button greys out after use so the gradient halo never stacks on repeated clicks.
+
 ### Draw quick markup
 
 Apply lightweight annotations to an existing image. Lines and arrows expand the canvas as needed so their endpoints stay visible.

@@ -45,6 +45,7 @@ const (
 	ToolRect
 	ToolNumber
 	ToolText
+	ToolShadow
 )
 
 const (
@@ -60,6 +61,8 @@ type Tab struct {
 	Zoom       float64
 	NextNumber int
 	WidthIdx   int
+	// ShadowApplied tracks whether the drop shadow tool has already been used on this tab.
+	ShadowApplied bool
 }
 
 const handleSize = 8
@@ -513,6 +516,8 @@ func actionOfTool(t Tool) actionType {
 		return actionCrop
 	case ToolDraw, ToolCircle, ToolLine, ToolArrow, ToolRect, ToolNumber:
 		return actionDraw
+	case ToolShadow:
+		return actionNone
 	default:
 		return actionNone
 	}
@@ -661,7 +666,7 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	}
 }
 
-func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
+func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, shadowApplied bool) {
 	y := tabHeight
 	for i, cb := range toolButtons {
 		r := image.Rect(0, y, toolbarWidth, y+24)
@@ -673,7 +678,14 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 		} else if i == hoverTool {
 			state = StateHover
 		}
+		if tb.tool == ToolShadow && shadowApplied {
+			state = StateDefault
+		}
 		cb.Draw(dst, state)
+		if tb.tool == ToolShadow && shadowApplied {
+			overlay := image.NewUniform(color.RGBA{0, 0, 0, 90})
+			draw.Draw(dst, r, overlay, image.Point{}, draw.Over)
+		}
 		y += 24
 	}
 
@@ -1059,6 +1071,7 @@ type paintState struct {
 	tool            Tool
 	colorIdx        int
 	numberIdx       int
+	shadowApplied   bool
 	cropping        bool
 	cropRect        image.Rectangle
 	cropStart       image.Point
@@ -1120,7 +1133,7 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 	}
 
 	drawTabs(b.RGBA(), st.tabs, st.current)
-	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx)
+	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx, st.shadowApplied)
 	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut)
 
 	if ctx.Err() != nil {

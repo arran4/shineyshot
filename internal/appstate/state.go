@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/example/shineyshot/internal/capture"
 	"github.com/example/shineyshot/internal/clipboard"
+	"github.com/example/shineyshot/internal/render"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
@@ -33,6 +34,12 @@ type AppState struct {
 	Output   string
 	ColorIdx int
 	WidthIdx int
+	// ShadowDefaults configures the drop shadow applied by the annotation tool.
+	ShadowDefaults render.ShadowOptions
+	// InitialShadowApplied marks whether the first tab already includes a drop shadow.
+	InitialShadowApplied bool
+	// InitialShadowOffset shifts the first tab to compensate for pre-applied shadows.
+	InitialShadowOffset image.Point
 
 	updateCh    chan struct{}
 	sendControl func(controlEvent)
@@ -67,12 +74,28 @@ func WithSettingsListener(fn func(colorIdx, widthIdx int)) Option {
 // WithOnClose registers a callback invoked when the window closes.
 func WithOnClose(fn func()) Option { return func(a *AppState) { a.onClose = fn } }
 
+// WithShadowDefaults configures the drop shadow used by the annotation tool.
+func WithShadowDefaults(opts render.ShadowOptions) Option {
+	return func(a *AppState) { a.ShadowDefaults = opts }
+}
+
+// WithInitialShadowApplied records whether the starting image already contains a drop shadow.
+func WithInitialShadowApplied(applied bool) Option {
+	return func(a *AppState) { a.InitialShadowApplied = applied }
+}
+
+// WithInitialShadowOffset sets the offset adjustment for the first tab when a drop shadow is pre-applied.
+func WithInitialShadowOffset(offset image.Point) Option {
+	return func(a *AppState) { a.InitialShadowOffset = offset }
+}
+
 // New creates an AppState with the provided options.
 func New(opts ...Option) *AppState {
 	a := &AppState{
-		ColorIdx: defaultColorIndex,
-		WidthIdx: defaultWidthIndex,
-		updateCh: make(chan struct{}, 1),
+		ColorIdx:       defaultColorIndex,
+		WidthIdx:       defaultWidthIndex,
+		ShadowDefaults: render.ShadowOptions{Radius: 24, Offset: image.Pt(32, 32), Opacity: 0.35},
+		updateCh:       make(chan struct{}, 1),
 	}
 	for _, o := range opts {
 		o(a)
@@ -163,7 +186,7 @@ func (a *AppState) Main(s screen.Screen) {
 	// tool button labels so the UI contents are not clipped on start up.
 	d := &font.Drawer{Face: basicfont.Face7x13}
 	max := d.MeasureString("ShineyShot").Ceil() + 8 // padding
-	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "H:Num", "T:Text"}
+	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "$:Shadow", "H:Num", "T:Text"}
 	for _, lbl := range toolLabels {
 		w := d.MeasureString(lbl).Ceil() + 8
 		if w > max {
@@ -201,7 +224,7 @@ func (a *AppState) Main(s screen.Screen) {
 
 	a.setControlSender(func(ev controlEvent) { w.Send(ev) })
 
-	tabs := []Tab{{Image: rgba, Title: "1", Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: widthIdx}}
+	tabs := []Tab{{Image: rgba, Title: "1", Offset: a.InitialShadowOffset, Zoom: 1, NextNumber: 1, WidthIdx: widthIdx, ShadowApplied: a.InitialShadowApplied}}
 	current := 0
 
 	var active actionType
@@ -255,13 +278,43 @@ func (a *AppState) Main(s screen.Screen) {
 		{Button: &ToolButton{label: "L:Line", tool: ToolLine, atype: actionDraw}},
 		{Button: &ToolButton{label: "A:Arrow", tool: ToolArrow, atype: actionDraw}},
 		{Button: &ToolButton{label: "X:Rect", tool: ToolRect, atype: actionDraw}},
+		{Button: &ToolButton{label: "$:Shadow", tool: ToolShadow, atype: actionNone}},
 		{Button: &ToolButton{label: "H:Num", tool: ToolNumber, atype: actionDraw}},
 		{Button: &ToolButton{label: "T:Text", tool: ToolText, atype: actionNone}},
+	}
+	applyShadow := func(idx int) {
+		tab := &tabs[idx]
+		if tab.ShadowApplied {
+			message = "shadow already applied"
+			messageUntil = time.Now().Add(2 * time.Second)
+			return
+		}
+		shadow := render.ApplyShadow(tab.Image, a.ShadowDefaults)
+		if shadow == nil {
+			message = "shadow unavailable"
+			messageUntil = time.Now().Add(2 * time.Second)
+			return
+		}
+		bounds := shadow.Bounds()
+		rebased := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
+		draw.Draw(rebased, rebased.Bounds(), shadow, bounds.Min, draw.Src)
+		tab.Image = rebased
+		if bounds.Min.X != 0 || bounds.Min.Y != 0 {
+			tab.Offset = tab.Offset.Add(bounds.Min)
+		}
+		tab.ShadowApplied = true
+		message = "shadow applied"
+		messageUntil = time.Now().Add(2 * time.Second)
 	}
 	for _, cb := range toolButtons {
 		tb := cb.Button.(*ToolButton)
 		t := tb
 		tb.onSelect = func() {
+			if t.tool == ToolShadow {
+				applyShadow(current)
+				w.Send(paint.Event{})
+				return
+			}
 			tool = t.tool
 			active = actionNone
 		}
@@ -293,7 +346,7 @@ func (a *AppState) Main(s screen.Screen) {
 			log.Printf("capture screenshot: %v", err)
 			return
 		}
-		tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
+		tabs = append(tabs, Tab{Image: img, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx, ShadowApplied: false})
 		current = len(tabs) - 1
 		tabs[current].Zoom = fitZoom(tabs[current].Image, width, height)
 		message = "captured screenshot"
@@ -304,7 +357,7 @@ func (a *AppState) Main(s screen.Screen) {
 	register("dup", shortcutList{{Rune: 'u', Modifiers: key.ModControl}}, func() {
 		dup := image.NewRGBA(tabs[current].Image.Bounds())
 		draw.Draw(dup, dup.Bounds(), tabs[current].Image, image.Point{}, draw.Src)
-		tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx})
+		tabs = append(tabs, Tab{Image: dup, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: tabs[current].Offset, Zoom: tabs[current].Zoom, NextNumber: tabs[current].NextNumber, WidthIdx: tabs[current].WidthIdx, ShadowApplied: tabs[current].ShadowApplied})
 		current = len(tabs) - 1
 	})
 
@@ -316,7 +369,7 @@ func (a *AppState) Main(s screen.Screen) {
 		}
 		rgba := image.NewRGBA(img.Bounds())
 		draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-		tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx})
+		tabs = append(tabs, Tab{Image: rgba, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: image.Point{}, Zoom: 1, NextNumber: 1, WidthIdx: a.WidthIdx, ShadowApplied: false})
 		current = len(tabs) - 1
 		message = "pasted new tab"
 		log.Print(message)
@@ -389,7 +442,7 @@ func (a *AppState) Main(s screen.Screen) {
 		if tool == ToolCrop && !cropRect.Empty() {
 			cropped := cropImage(tabs[current].Image, cropRect)
 			off := tabs[current].Offset.Add(cropRect.Min)
-			tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx})
+			tabs = append(tabs, Tab{Image: cropped, Title: fmt.Sprintf("%d", len(tabs)+1), Offset: off, Zoom: tabs[current].Zoom, NextNumber: 1, WidthIdx: tabs[current].WidthIdx, ShadowApplied: tabs[current].ShadowApplied})
 			current = len(tabs) - 1
 			active = actionNone
 			cropRect = image.Rectangle{}
@@ -446,6 +499,7 @@ func (a *AppState) Main(s screen.Screen) {
 				tool:            tool,
 				colorIdx:        colorIdx,
 				numberIdx:       numberIdx,
+				shadowApplied:   tabs[current].ShadowApplied,
 				cropping:        active == actionCrop,
 				cropRect:        cropRect,
 				cropStart:       cropStart,
@@ -962,6 +1016,9 @@ func (a *AppState) Main(s screen.Screen) {
 				case 'x', 'X':
 					tool = ToolRect
 					active = actionNone
+					w.Send(paint.Event{})
+				case 's', 'S':
+					applyShadow(current)
 					w.Send(paint.Event{})
 				case 't', 'T':
 					tool = ToolText
