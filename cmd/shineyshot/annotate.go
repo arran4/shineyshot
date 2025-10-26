@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
@@ -112,6 +113,9 @@ func (a *annotateCmd) Run() error {
 		if err != nil {
 			return err
 		}
+		if a.root != nil {
+			a.root.notifyCapture(a.captureDetail(), img)
+		}
 	case "open":
 		f, err := os.Open(a.file)
 		if err != nil {
@@ -136,4 +140,26 @@ func (a *annotateCmd) Run() error {
 	st := appstate.New(opts...)
 	st.Run()
 	return nil
+}
+
+func (a *annotateCmd) captureDetail() string {
+	mode := strings.TrimSpace(a.target)
+	switch mode {
+	case "screen":
+		if strings.TrimSpace(a.selector) != "" {
+			return fmt.Sprintf("screen %s", a.selector)
+		}
+	case "window":
+		if strings.TrimSpace(a.selector) != "" {
+			return fmt.Sprintf("window %s", a.selector)
+		}
+	case "region":
+		if strings.TrimSpace(a.rect) != "" {
+			return fmt.Sprintf("region %s", a.rect)
+		}
+	}
+	if mode == "" {
+		return "capture"
+	}
+	return fmt.Sprintf("%s capture", mode)
 }

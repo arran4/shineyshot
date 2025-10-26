@@ -202,10 +202,13 @@ func (d *drawCmd) Run() error {
 	if err := png.Encode(out, rgba); err != nil {
 		return err
 	}
+	saved := d.output
 	if abs, err := filepath.Abs(d.output); err == nil {
-		fmt.Fprintf(os.Stderr, "saved %s\n", abs)
-	} else {
-		fmt.Fprintf(os.Stderr, "saved %s\n", d.output)
+		saved = abs
+	}
+	fmt.Fprintf(os.Stderr, "saved %s\n", saved)
+	if d.root != nil {
+		d.root.notifySave(saved)
 	}
 	return nil
 }

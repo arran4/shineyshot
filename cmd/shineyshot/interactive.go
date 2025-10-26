@@ -334,6 +334,13 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		return
 	}
 	i.setImage(img)
+	if i.r != nil {
+		detail := mode
+		if target != "" {
+			detail = fmt.Sprintf("%s %s", mode, target)
+		}
+		i.r.notifyCapture(strings.TrimSpace(detail), img)
+	}
 	if target != "" {
 		i.writef(i.stdout, "captured %s %s\n", mode, target)
 	} else {
@@ -769,6 +776,9 @@ func (i *interactiveCmd) handleCopy() {
 		return
 	}
 	i.writeln(i.stdout, "image copied to clipboard")
+	if i.r != nil {
+		i.r.notifyCopy("image")
+	}
 }
 
 func (i *interactiveCmd) handleCopyName() {
@@ -784,6 +794,9 @@ func (i *interactiveCmd) handleCopyName() {
 		return
 	}
 	i.writeln(i.stdout, "filename copied to clipboard")
+	if i.r != nil {
+		i.r.notifyCopy(output)
+	}
 }
 
 func (i *interactiveCmd) handleBackground(args []string) {
@@ -1106,10 +1119,17 @@ func expandUserPath(p string) (string, error) {
 }
 
 func (i *interactiveCmd) finalizeSave(path string) {
+	display := path
+	if abs, err := filepath.Abs(path); err == nil {
+		display = abs
+	}
 	i.mu.Lock()
-	i.output = path
+	i.output = display
 	i.mu.Unlock()
-	i.writef(i.stdout, "saved %s\n", path)
+	i.writef(i.stdout, "saved %s\n", display)
+	if i.r != nil {
+		i.r.notifySave(display)
+	}
 }
 
 func parseInts(args []string, count int) ([]int, error) {
