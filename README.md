@@ -72,6 +72,29 @@ Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard�
 - **CLI background mode** keeps a session alive so other commands—or other people—can reuse the same permissions.
 - **Interactive mode** gives you a text-driven shell with history and inline help.
 
+## Snapshot command
+
+Fire off a one-off screenshot without starting the editor. The `snapshot` subcommand exposes flags that mirror the capture paths inside the other modes so you can experiment from the terminal:
+
+```bash
+# Save the full desktop from display 0 into screenshot.png
+shineyshot snapshot -mode screen -display 0 -output screenshot.png
+
+# Target a specific window by substring match and keep the PNG on disk
+shineyshot snapshot -mode window -window "Settings" -output window.png
+
+# Pipe a capture directly to another process without touching the filesystem
+shineyshot snapshot -mode screen -stdout | file -
+
+# Capture a preset region in global coordinates
+shineyshot snapshot -mode region -region 0,0,1280,720 -output region.png
+
+# Launch the interactive region picker provided by the portal
+shineyshot snapshot -mode region -output picked.png
+```
+
+When `-region` is omitted the command falls back to the same interactive selection dialog used elsewhere in ShineyShot, matching the conditional branch in [`cmd/shineyshot/snapshot.go`](cmd/shineyshot/snapshot.go).
+
 ## CLI File Mode
 
 Group repeated operations on a file behind the `file` subcommand. The file path is supplied once and passed to nested commands unless you override it.
