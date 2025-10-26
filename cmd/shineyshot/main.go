@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
 )
@@ -27,6 +28,11 @@ func (r *root) Program() string {
 	return r.program
 }
 
+func (r *root) subcommand(name string) *root {
+	program := strings.TrimSpace(strings.Join([]string{r.program, name}, " "))
+	return &root{program: program, state: r.state}
+}
+
 func (r *root) FlagSet() *flag.FlagSet {
 	return r.fs
 }
@@ -38,7 +44,9 @@ func newRoot() *root {
 }
 
 func (r *root) Run(args []string) error {
-	r.fs.Parse(args)
+	if err := r.fs.Parse(args); err != nil {
+		return err
+	}
 	if r.fs.NArg() < 1 {
 		return &UsageError{of: r}
 	}

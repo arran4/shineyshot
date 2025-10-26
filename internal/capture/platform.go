@@ -75,9 +75,7 @@ func FindMonitor(monitors []MonitorInfo, selector string) (MonitorInfo, error) {
 		}
 		return monitors[0], nil
 	}
-	if strings.HasPrefix(lower, "#") {
-		lower = lower[1:]
-	}
+	lower = strings.TrimPrefix(lower, "#")
 	if idx, err := strconv.Atoi(lower); err == nil {
 		if idx < 0 || idx >= len(monitors) {
 			return MonitorInfo{}, fmt.Errorf("monitor index %d out of range", idx)

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -27,6 +28,28 @@ func (c *commandList) String() string {
 func (c *commandList) Set(value string) error {
 	*c = append(*c, value)
 	return nil
+}
+
+func writef(w io.Writer, format string, args ...any) error {
+	_, err := fmt.Fprintf(w, format, args...)
+	return err
+}
+
+func writeln(w io.Writer, msg string) error {
+	_, err := fmt.Fprintln(w, msg)
+	return err
+}
+
+func closeWithLog(name string, c io.Closer) {
+	if err := c.Close(); err != nil {
+		log.Printf("%s: close: %v", name, err)
+	}
+}
+
+func removeWithLog(path string) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("remove %s: %v", path, err)
+	}
 }
 
 type backgroundCmd struct {
@@ -169,7 +192,9 @@ func (b *backgroundCmd) Run() error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stdout, "started background session %s at %s\n", name, socketPath(dir, name))
+		if err := writef(os.Stdout, "started background session %s at %s\n", name, socketPath(dir, name)); err != nil {
+			return err
+		}
 		return nil
 	case "stop":
 		dir, err := resolveSocketDir(b.dir)
@@ -183,7 +208,9 @@ func (b *backgroundCmd) Run() error {
 		if err := stopSocket(dir, name); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stdout, "stop requested for %s\n", name)
+		if err := writef(os.Stdout, "stop requested for %s\n", name); err != nil {
+			return err
+		}
 		return nil
 	case "attach":
 		dir, err := resolveSocketDir(b.dir)
@@ -276,15 +303,20 @@ func printSocketList(dir string, out io.Writer) error {
 		return err
 	}
 	if len(statuses) == 0 {
-		fmt.Fprintln(out, "no sockets found")
-		return nil
+		return writeln(out, "no sockets found")
 	}
-	fmt.Fprintln(out, "available sockets:")
+	if err := writeln(out, "available sockets:"); err != nil {
+		return err
+	}
 	for _, st := range statuses {
 		if st.err != nil {
-			fmt.Fprintf(out, "  %s (dead: %v)\n", st.name, st.err)
+			if err := writef(out, "  %s (dead: %v)\n", st.name, st.err); err != nil {
+				return err
+			}
 		} else {
-			fmt.Fprintf(out, "  %s\n", st.name)
+			if err := writef(out, "  %s\n", st.name); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -296,8 +328,7 @@ func cleanSocketDir(dir string, out io.Writer) error {
 		return err
 	}
 	if len(statuses) == 0 {
-		fmt.Fprintln(out, "no dead sockets found")
-		return nil
+		return writeln(out, "no dead sockets found")
 	}
 	var removed []string
 	for _, st := range statuses {
@@ -309,15 +340,21 @@ func cleanSocketDir(dir string, out io.Writer) error {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			fmt.Fprintf(out, "failed to remove %s: %v\n", st.name, err)
+			if err := writef(out, "failed to remove %s: %v\n", st.name, err); err != nil {
+				return err
+			}
 			continue
 		}
 		removed = append(removed, st.name)
 	}
 	if len(removed) == 0 {
-		fmt.Fprintln(out, "no dead sockets found")
+		if err := writeln(out, "no dead sockets found"); err != nil {
+			return err
+		}
 	} else {
-		fmt.Fprintf(out, "removed %d dead socket(s): %s\n", len(removed), strings.Join(removed, ", "))
+		if err := writef(out, "removed %d dead socket(s): %s\n", len(removed), strings.Join(removed, ", ")); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -539,7 +576,7 @@ func pingSocket(path string) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer closeWithLog("ping socket", conn)
 	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		return err
 	}
@@ -626,8 +663,8 @@ func (s *interactiveSocketServer) run() error {
 		return err
 	}
 	s.listener = ln
-	defer ln.Close()
-	defer os.Remove(s.path)
+	defer closeWithLog("socket listener", ln)
+	defer removeWithLog(s.path)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -636,7 +673,8 @@ func (s *interactiveSocketServer) run() error {
 				return nil
 			default:
 			}
-			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
 				continue
 			}
 			return err
@@ -646,16 +684,24 @@ func (s *interactiveSocketServer) run() error {
 }
 
 func (s *interactiveSocketServer) handleConn(conn net.Conn) {
-	defer conn.Close()
-	fmt.Fprintln(conn, "READY")
+	defer closeWithLog("socket connection", conn)
+	if err := writeln(conn, "READY"); err != nil {
+		log.Printf("socket write READY: %v", err)
+		return
+	}
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := scanner.Text()
 		switch {
 		case line == "PING":
-			fmt.Fprintln(conn, "PONG")
+			if err := writeln(conn, "PONG"); err != nil {
+				log.Printf("socket write PONG: %v", err)
+				return
+			}
 		case line == "SHUTDOWN":
-			fmt.Fprintln(conn, "DONE OK CLOSE")
+			if err := writeln(conn, "DONE OK CLOSE"); err != nil {
+				log.Printf("socket write DONE OK CLOSE: %v", err)
+			}
 			s.shutdown()
 			return
 		case strings.HasPrefix(line, "EXEC "):
@@ -669,16 +715,27 @@ func (s *interactiveSocketServer) handleConn(conn net.Conn) {
 			s.execMu.Unlock()
 			if execErr != nil {
 				msg := strings.ReplaceAll(execErr.Error(), "\n", "\\n")
-				fmt.Fprintf(conn, "DONE ERR %s\n", msg)
+				if err := writef(conn, "DONE ERR %s\n", msg); err != nil {
+					log.Printf("socket write DONE ERR: %v", err)
+					return
+				}
 				continue
 			}
 			if done {
-				fmt.Fprintln(conn, "DONE OK CLOSE")
+				if err := writeln(conn, "DONE OK CLOSE"); err != nil {
+					log.Printf("socket write DONE OK CLOSE: %v", err)
+				}
 				return
 			}
-			fmt.Fprintln(conn, "DONE OK")
+			if err := writeln(conn, "DONE OK"); err != nil {
+				log.Printf("socket write DONE OK: %v", err)
+				return
+			}
 		default:
-			fmt.Fprintln(conn, "ERR unknown request")
+			if err := writeln(conn, "ERR unknown request"); err != nil {
+				log.Printf("socket write error: %v", err)
+				return
+			}
 		}
 	}
 }
@@ -691,9 +748,9 @@ func (s *interactiveSocketServer) shutdown() {
 	}
 	close(s.stopCh)
 	if s.listener != nil {
-		s.listener.Close()
+		closeWithLog("socket listener", s.listener)
 	}
-	os.Remove(s.path)
+	removeWithLog(s.path)
 }
 
 func runSocketCommands(dir, name string, commands []string, stdout, stderr io.Writer) error {
@@ -701,7 +758,7 @@ func runSocketCommands(dir, name string, commands []string, stdout, stderr io.Wr
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer closeWithLog("socket client", conn)
 	scanner := bufio.NewScanner(conn)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
@@ -731,9 +788,13 @@ func executeOverSocket(conn net.Conn, scanner *bufio.Scanner, cmd string, stdout
 		line := scanner.Text()
 		switch {
 		case strings.HasPrefix(line, "OUT "):
-			fmt.Fprintln(stdout, strings.TrimPrefix(line, "OUT "))
+			if err := writeln(stdout, strings.TrimPrefix(line, "OUT ")); err != nil {
+				return err
+			}
 		case strings.HasPrefix(line, "ERR "):
-			fmt.Fprintln(stderr, strings.TrimPrefix(line, "ERR "))
+			if err := writeln(stderr, strings.TrimPrefix(line, "ERR ")); err != nil {
+				return err
+			}
 		case strings.HasPrefix(line, "DONE OK"):
 			if strings.HasSuffix(line, "CLOSE") {
 				return errSocketClosed
@@ -743,7 +804,9 @@ func executeOverSocket(conn net.Conn, scanner *bufio.Scanner, cmd string, stdout
 			msg := strings.TrimPrefix(line, "DONE ERR ")
 			return errors.New(strings.ReplaceAll(msg, "\\n", "\n"))
 		default:
-			fmt.Fprintln(stdout, line)
+			if err := writeln(stdout, line); err != nil {
+				return err
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -759,7 +822,7 @@ func attachSocket(dir, name string, stdin io.Reader, stdout, stderr io.Writer) e
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer closeWithLog("socket client", conn)
 	scanner := bufio.NewScanner(conn)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
@@ -772,7 +835,9 @@ func attachSocket(dir, name string, stdin io.Reader, stdout, stderr io.Writer) e
 	}
 	input := bufio.NewScanner(stdin)
 	for {
-		fmt.Fprint(stdout, "> ")
+		if _, err := fmt.Fprint(stdout, "> "); err != nil {
+			return err
+		}
 		if !input.Scan() {
 			return input.Err()
 		}
@@ -794,9 +859,13 @@ func consumeSocketResponse(scanner *bufio.Scanner, stdout, stderr io.Writer) err
 		line := scanner.Text()
 		switch {
 		case strings.HasPrefix(line, "OUT "):
-			fmt.Fprintln(stdout, strings.TrimPrefix(line, "OUT "))
+			if err := writeln(stdout, strings.TrimPrefix(line, "OUT ")); err != nil {
+				return err
+			}
 		case strings.HasPrefix(line, "ERR "):
-			fmt.Fprintln(stderr, strings.TrimPrefix(line, "ERR "))
+			if err := writeln(stderr, strings.TrimPrefix(line, "ERR ")); err != nil {
+				return err
+			}
 		case strings.HasPrefix(line, "DONE OK"):
 			if strings.HasSuffix(line, "CLOSE") {
 				return errSocketClosed
@@ -806,7 +875,9 @@ func consumeSocketResponse(scanner *bufio.Scanner, stdout, stderr io.Writer) err
 			msg := strings.TrimPrefix(line, "DONE ERR ")
 			return errors.New(strings.ReplaceAll(msg, "\\n", "\n"))
 		default:
-			fmt.Fprintln(stdout, line)
+			if err := writeln(stdout, line); err != nil {
+				return err
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -828,7 +899,7 @@ func stopSocket(dir, name string) error {
 		}
 		return err
 	}
-	defer conn.Close()
+	defer closeWithLog("socket client", conn)
 	scanner := bufio.NewScanner(conn)
 	if !scanner.Scan() {
 		return scanner.Err()
@@ -842,13 +913,13 @@ func stopSocket(dir, name string) error {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "DONE ") {
-			os.Remove(path)
+			removeWithLog(path)
 			return nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	os.Remove(path)
+	removeWithLog(path)
 	return nil
 }
