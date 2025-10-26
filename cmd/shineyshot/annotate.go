@@ -12,16 +12,22 @@ import (
 
 	"github.com/example/shineyshot/internal/appstate"
 	"github.com/example/shineyshot/internal/capture"
+	"github.com/example/shineyshot/internal/render"
 )
 
 // annotateCmd represents the annotate subcommand.
 type annotateCmd struct {
-	action   string
-	target   string
-	selector string
-	rect     string
-	file     string
-	output   string
+	action        string
+	target        string
+	selector      string
+	rect          string
+	file          string
+	output        string
+	shadow        bool
+	shadowRadius  int
+	shadowOffset  string
+	shadowPoint   image.Point
+	shadowOpacity float64
 	*root
 	fs *flag.FlagSet
 }
@@ -34,12 +40,22 @@ func parseAnnotateCmd(args []string, r *root) (*annotateCmd, error) {
 	fs := flag.NewFlagSet("annotate", flag.ExitOnError)
 	a := &annotateCmd{root: r, fs: fs}
 	fs.Usage = usageFunc(a)
+	defaults := render.DefaultShadowOptions()
 	fs.StringVar(&a.file, "file", "", "image file to open in the editor")
 	fs.StringVar(&a.selector, "select", "", "selector for screen or window capture")
 	fs.StringVar(&a.rect, "rect", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
+	fs.BoolVar(&a.shadow, "shadow", false, "apply a drop shadow before opening the editor")
+	fs.IntVar(&a.shadowRadius, "shadow-radius", defaults.Radius, "drop shadow blur radius in pixels")
+	fs.StringVar(&a.shadowOffset, "shadow-offset", formatShadowOffset(defaults.Offset), "drop shadow offset as dx,dy")
+	fs.Float64Var(&a.shadowOpacity, "shadow-opacity", defaults.Opacity, "drop shadow opacity between 0 and 1")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
+	pt, err := parseShadowOffset(a.shadowOffset)
+	if err != nil {
+		return nil, err
+	}
+	a.shadowPoint = pt
 	operands := fs.Args()
 	if len(operands) == 0 {
 		return nil, &UsageError{of: a}
@@ -115,9 +131,6 @@ func (a *annotateCmd) Run() error {
 		if err != nil {
 			return fmt.Errorf("failed to capture %s: %w", a.target, err)
 		}
-		if a.root != nil {
-			a.root.notifyCapture(a.captureDetail(), img)
-		}
 	case "open":
 		f, err := os.Open(a.file)
 		if err != nil {
@@ -132,6 +145,16 @@ func (a *annotateCmd) Run() error {
 		}
 		img = image.NewRGBA(dec.Bounds())
 		draw.Draw(img, img.Bounds(), dec, image.Point{}, draw.Src)
+	}
+	shadowOpts := a.shadowOptions()
+	initialShadowOffset := image.Point{}
+	if a.shadow && img != nil {
+		res := render.ApplyShadow(img, shadowOpts)
+		initialShadowOffset = image.Pt(-res.Offset.X, -res.Offset.Y)
+		img = res.Image
+	}
+	if a.action == "capture" && a.root != nil {
+		a.root.notifyCapture(a.captureDetail(), img)
 	}
 	detail := ""
 	fileName := ""
@@ -152,6 +175,9 @@ func (a *annotateCmd) Run() error {
 			Tab:       "Tab 1",
 			LastSaved: lastSaved,
 		})),
+		appstate.WithShadowDefaults(shadowOpts),
+		appstate.WithInitialShadowApplied(a.shadow),
+		appstate.WithInitialShadowOffset(initialShadowOffset),
 	}
 	if strings.TrimSpace(a.output) != "" {
 		opts = append(opts, appstate.WithOutput(a.output))
@@ -159,6 +185,24 @@ func (a *annotateCmd) Run() error {
 	st := appstate.New(opts...)
 	st.Run()
 	return nil
+}
+
+func (a *annotateCmd) shadowOptions() render.ShadowOptions {
+	opts := render.DefaultShadowOptions()
+	if a.shadowRadius >= 0 {
+		opts.Radius = a.shadowRadius
+	} else {
+		opts.Radius = 0
+	}
+	opts.Offset = a.shadowPoint
+	if a.shadowOpacity <= 0 {
+		opts.Opacity = 0
+	} else if a.shadowOpacity >= 1 {
+		opts.Opacity = 1
+	} else {
+		opts.Opacity = a.shadowOpacity
+	}
+	return opts
 }
 
 func (a *annotateCmd) captureDetail() string {
