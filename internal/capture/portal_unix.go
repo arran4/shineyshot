@@ -3,6 +3,7 @@
 package capture
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/draw"
@@ -18,7 +19,11 @@ func portalScreenshot(interactive bool) (*image.RGBA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dbus connect: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "dbus close: %v\n", cerr)
+		}
+	}()
 
 	obj := conn.Object("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop")
 	opts := map[string]dbus.Variant{
@@ -66,8 +71,16 @@ func loadPNG(path string) (*image.RGBA, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	defer os.Remove(path) // best effort cleanup
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "close %s: %v\n", path, cerr)
+		}
+	}()
+	defer func() {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "remove %s: %v\n", path, err)
+		}
+	}() // best effort cleanup
 
 	img, err := png.Decode(f)
 	if err != nil {

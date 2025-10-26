@@ -39,10 +39,13 @@ func (p *previewCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	img, err := png.Decode(f)
+	closeErr := f.Close()
 	if err != nil {
 		return err
+	}
+	if closeErr != nil {
+		return closeErr
 	}
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)

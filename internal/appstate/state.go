@@ -348,8 +348,17 @@ func (a *AppState) Main(s screen.Screen) {
 			log.Printf("save: %v", err)
 			return
 		}
-		png.Encode(out, tabs[current].Image)
-		out.Close()
+		if err := png.Encode(out, tabs[current].Image); err != nil {
+			log.Printf("save: %v", err)
+			if cerr := out.Close(); cerr != nil {
+				log.Printf("save: closing file: %v", cerr)
+			}
+			return
+		}
+		if err := out.Close(); err != nil {
+			log.Printf("save: closing file: %v", err)
+			return
+		}
 		message = fmt.Sprintf("saved %s", output)
 		log.Print(message)
 		messageUntil = time.Now().Add(2 * time.Second)
@@ -905,7 +914,6 @@ func (a *AppState) Main(s screen.Screen) {
 					}
 					continue
 				}
-				confirmDelete = false
 				ks := KeyShortcut{Rune: unicode.ToLower(e.Rune), Code: e.Code, Modifiers: e.Modifiers}
 				if action, ok := keyboardAction[ks]; ok {
 					if action == "delete" {
@@ -918,10 +926,14 @@ func (a *AppState) Main(s screen.Screen) {
 							continue
 						}
 						confirmDelete = false
+						handleShortcut(action)
+						continue
 					}
+					confirmDelete = false
 					handleShortcut(action)
 					continue
 				}
+				confirmDelete = false
 				switch e.Rune {
 				case 'm', 'M':
 					tool = ToolMove

@@ -311,21 +311,6 @@ func paletteColorAt(idx int) color.RGBA {
 	return palette[idx]
 }
 
-func paletteNameAt(idx int) string {
-	paletteMu.RLock()
-	defer paletteMu.RUnlock()
-	if len(paletteNames) == 0 {
-		return ""
-	}
-	if idx < 0 {
-		idx = 0
-	}
-	if idx >= len(paletteNames) {
-		idx = len(paletteNames) - 1
-	}
-	return paletteNames[idx]
-}
-
 func clampColorIndex(idx int) int {
 	paletteMu.RLock()
 	defer paletteMu.RUnlock()
@@ -614,9 +599,10 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		tb := TabButton{label: t.Title, onSelect: nil}
 		tb.SetRect(image.Rect(x, 0, x+80, tabHeight))
 		state := StateDefault
-		if i == current {
+		switch i {
+		case current:
 			state = StatePressed
-		} else if i == hoverTab {
+		case hoverTab:
 			state = StateHover
 		}
 		tb.Draw(dst, state)
@@ -723,9 +709,10 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 		for i, w := range widths {
 			rect := image.Rect(0, y, toolbarWidth, y+16)
 			c := color.RGBA{200, 200, 200, 255}
-			if i == widthIdx {
+			switch i {
+			case widthIdx:
 				c = color.RGBA{150, 150, 150, 255}
-			} else if i == hoverWidth {
+			case hoverWidth:
 				c = color.RGBA{180, 180, 180, 255}
 			}
 			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
@@ -745,9 +732,10 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 			h := numberBoxHeight(s)
 			rect := image.Rect(0, y, toolbarWidth, y+h)
 			c := color.RGBA{200, 200, 200, 255}
-			if i == numberIdx {
+			switch i {
+			case numberIdx:
 				c = color.RGBA{150, 150, 150, 255}
-			} else if i == hoverNumber {
+			case hoverNumber:
 				c = color.RGBA{180, 180, 180, 255}
 			}
 			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
@@ -765,9 +753,10 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int) {
 		for i, face := range textFaces {
 			rect := image.Rect(0, y, toolbarWidth, y+24)
 			c := color.RGBA{200, 200, 200, 255}
-			if i == textSizeIdx {
+			switch i {
+			case textSizeIdx:
 				c = color.RGBA{150, 150, 150, 255}
-			} else if i == hoverTextSize {
+			case hoverTextSize:
 				c = color.RGBA{180, 180, 180, 255}
 			}
 			draw.Draw(dst, rect, &image.Uniform{c}, image.Point{}, draw.Src)
@@ -902,19 +891,6 @@ func drawFilledCircle(img *image.RGBA, cx, cy, r int, col color.Color) {
 				if image.Pt(px, py).In(img.Bounds()) {
 					img.Set(px, py, col)
 				}
-			}
-		}
-	}
-}
-
-func drawFilledEllipse(img *image.RGBA, cx, cy, rx, ry int, col color.Color) {
-	for dy := -ry; dy <= ry; dy++ {
-		span := int(float64(rx) * math.Sqrt(1.0-float64(dy*dy)/float64(ry*ry)))
-		for dx := -span; dx <= span; dx++ {
-			px := cx + dx
-			py := cy + dy
-			if image.Pt(px, py).In(img.Bounds()) {
-				img.Set(px, py, col)
 			}
 		}
 	}

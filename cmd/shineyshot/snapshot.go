@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -65,7 +66,11 @@ func (s *snapshotCmd) Run() error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() {
+			if cerr := f.Close(); cerr != nil {
+				log.Printf("close %s: %v", s.output, cerr)
+			}
+		}()
 		w = f
 	}
 	if err := png.Encode(w, img); err != nil {
