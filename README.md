@@ -252,7 +252,7 @@ Commands:
   preview                    open copy in separate window
   save FILE                  save image to FILE
   savetmp                    save to /tmp with a unique filename
-  savepictures               save to your Pictures directory
+  savepictures               save to your Pictures directory (defaults to ~/Pictures)
   savehome                   save to your home directory
   copy                       copy image to clipboard
   windows                    list available windows and selectors
