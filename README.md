@@ -76,6 +76,8 @@ Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard�
 
 Group repeated operations on a file behind the `file` subcommand. The file path is supplied once and passed to nested commands unless you override it.
 
+Behind the scenes the wrapper injects `-output` for `snapshot` and `-file`/`-output` for `draw`, `annotate`, and `preview` before handing control to the nested command. Provide replacement values alongside the nested command if you need a different destination—the extra flags you supply take precedence over the defaults that `file` adds.
+
 ```bash
 sh-5.3$ shineyshot file -file snapshot.png capture screen
 saved /home/user/Pictures/snapshot.png
