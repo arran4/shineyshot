@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
@@ -92,8 +93,14 @@ func (a *annotateCmd) Run() error {
 		switch a.target {
 		case "screen":
 			img, err = capture.CaptureScreenshot(a.selector)
+			if err != nil {
+				return fmt.Errorf("annotate capture screen: %w", err)
+			}
 		case "window":
 			img, err = capture.CaptureWindow(a.selector)
+			if err != nil {
+				return fmt.Errorf("annotate capture window: %w", err)
+			}
 		case "region":
 			rectSpec := a.rect
 			if rectSpec == "" {
@@ -101,21 +108,25 @@ func (a *annotateCmd) Run() error {
 			}
 			if strings.TrimSpace(rectSpec) == "" {
 				img, err = capture.CaptureRegion()
+				if err != nil {
+					return fmt.Errorf("annotate capture region: %w", err)
+				}
 			} else {
 				var rect image.Rectangle
 				rect, err = parseRect(rectSpec)
-				if err == nil {
-					img, err = capture.CaptureRegionRect(rect)
+				if err != nil {
+					return fmt.Errorf("annotate parse region %q: %w", rectSpec, err)
+				}
+				img, err = capture.CaptureRegionRect(rect)
+				if err != nil {
+					return fmt.Errorf("annotate capture region rect: %w", err)
 				}
 			}
-		}
-		if err != nil {
-			return err
 		}
 	case "open":
 		f, err := os.Open(a.file)
 		if err != nil {
-			return err
+			return fmt.Errorf("open %s: %w", a.file, err)
 		}
 		dec, err := png.Decode(f)
 		if cerr := f.Close(); cerr != nil {
@@ -124,7 +135,7 @@ func (a *annotateCmd) Run() error {
 			}
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("decode %s: %w", a.file, err)
 		}
 		img = image.NewRGBA(dec.Bounds())
 		draw.Draw(img, img.Bounds(), dec, image.Point{}, draw.Src)

@@ -73,7 +73,7 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 func (s *snapshotCmd) Run() error {
 	img, err := s.capture()
 	if err != nil {
-		return err
+		return fmt.Errorf("snapshot %s: %w", s.mode, err)
 	}
 	var w io.Writer
 	if s.stdout {
@@ -81,7 +81,7 @@ func (s *snapshotCmd) Run() error {
 	} else {
 		f, err := os.Create(s.output)
 		if err != nil {
-			return err
+			return fmt.Errorf("create %s: %w", s.output, err)
 		}
 		defer func() {
 			if cerr := f.Close(); cerr != nil {
@@ -91,7 +91,7 @@ func (s *snapshotCmd) Run() error {
 		w = f
 	}
 	if err := png.Encode(w, img); err != nil {
-		return err
+		return fmt.Errorf("encode PNG: %w", err)
 	}
 	if s.stdout {
 		fmt.Fprintln(os.Stderr, "wrote PNG data to stdout")
@@ -108,18 +108,34 @@ func (s *snapshotCmd) Run() error {
 func (s *snapshotCmd) capture() (*image.RGBA, error) {
 	switch s.mode {
 	case "screen":
-		return capture.CaptureScreenshot(s.selector)
+		img, err := capture.CaptureScreenshot(s.selector)
+		if err != nil {
+			return nil, fmt.Errorf("capture screen: %w", err)
+		}
+		return img, nil
 	case "window":
-		return capture.CaptureWindow(s.selector)
+		img, err := capture.CaptureWindow(s.selector)
+		if err != nil {
+			return nil, fmt.Errorf("capture window: %w", err)
+		}
+		return img, nil
 	case "region":
 		if strings.TrimSpace(s.rect) == "" {
-			return capture.CaptureRegion()
+			img, err := capture.CaptureRegion()
+			if err != nil {
+				return nil, fmt.Errorf("capture region: %w", err)
+			}
+			return img, nil
 		}
 		rect, err := parseRect(s.rect)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse region %q: %w", s.rect, err)
 		}
-		return capture.CaptureRegionRect(rect)
+		img, err := capture.CaptureRegionRect(rect)
+		if err != nil {
+			return nil, fmt.Errorf("capture region rect: %w", err)
+		}
+		return img, nil
 	default:
 		return nil, errors.New("unsupported capture mode")
 	}
