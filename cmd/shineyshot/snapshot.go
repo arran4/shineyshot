@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/example/shineyshot/internal/capture"
+	"github.com/example/shineyshot/internal/render"
 )
 
 type snapshotCmd struct {
@@ -25,6 +26,11 @@ type snapshotCmd struct {
 	rect               string
 	includeDecorations bool
 	includeCursor      bool
+	shadow             bool
+	shadowRadius       int
+	shadowOffset       string
+	shadowPoint        image.Point
+	shadowOpacity      float64
 	*root
 	fs *flag.FlagSet
 }
@@ -37,6 +43,7 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	fs := flag.NewFlagSet("snapshot", flag.ExitOnError)
 	s := &snapshotCmd{root: r, fs: fs}
 	fs.Usage = usageFunc(s)
+	defaults := render.DefaultShadowOptions()
 	fs.StringVar(&s.output, "output", "screenshot.png", "write the capture to this file path")
 	fs.BoolVar(&s.stdout, "stdout", false, "write PNG data to stdout")
 	fs.BoolVar(&s.toClipboard, "to-clipboard", false, "copy the capture to the clipboard")
@@ -45,9 +52,18 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	fs.StringVar(&s.rect, "rect", "", "capture rectangle x0,y0,x1,y1 when targeting a region")
 	fs.BoolVar(&s.includeDecorations, "include-decorations", false, "request window decorations when capturing windows")
 	fs.BoolVar(&s.includeCursor, "include-cursor", false, "embed the cursor in captures when supported")
+	fs.BoolVar(&s.shadow, "shadow", false, "apply a drop shadow to the captured image")
+	fs.IntVar(&s.shadowRadius, "shadow-radius", defaults.Radius, "drop shadow blur radius in pixels")
+	fs.StringVar(&s.shadowOffset, "shadow-offset", formatShadowOffset(defaults.Offset), "drop shadow offset as dx,dy")
+	fs.Float64Var(&s.shadowOpacity, "shadow-opacity", defaults.Opacity, "drop shadow opacity between 0 and 1")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
+	pt, err := parseShadowOffset(s.shadowOffset)
+	if err != nil {
+		return nil, err
+	}
+	s.shadowPoint = pt
 	if s.toClipboard && s.stdout {
 		return nil, fmt.Errorf("-stdout cannot be used with -to-clipboard")
 	}
@@ -84,6 +100,10 @@ func (s *snapshotCmd) Run() error {
 	img, err := s.capture()
 	if err != nil {
 		return fmt.Errorf("failed to capture %s: %w", s.mode, err)
+	}
+	if s.shadow {
+		res := render.ApplyShadow(img, s.shadowOptions())
+		img = res.Image
 	}
 	if s.root != nil {
 		detail := s.describeCapture()
@@ -187,6 +207,44 @@ func (s *snapshotCmd) captureOptions() capture.CaptureOptions {
 		IncludeDecorations: s.includeDecorations,
 		IncludeCursor:      s.includeCursor,
 	}
+}
+
+func (s *snapshotCmd) shadowOptions() render.ShadowOptions {
+	opts := render.DefaultShadowOptions()
+	if s.shadowRadius >= 0 {
+		opts.Radius = s.shadowRadius
+	} else {
+		opts.Radius = 0
+	}
+	opts.Offset = s.shadowPoint
+	if s.shadowOpacity <= 0 {
+		opts.Opacity = 0
+	} else if s.shadowOpacity >= 1 {
+		opts.Opacity = 1
+	} else {
+		opts.Opacity = s.shadowOpacity
+	}
+	return opts
+}
+
+func parseShadowOffset(val string) (image.Point, error) {
+	parts := strings.Split(val, ",")
+	if len(parts) != 2 {
+		return image.Point{}, fmt.Errorf("invalid shadow offset %q", val)
+	}
+	vals := make([]int, 2)
+	for i, p := range parts {
+		v, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
+			return image.Point{}, fmt.Errorf("invalid shadow offset %q", val)
+		}
+		vals[i] = v
+	}
+	return image.Pt(vals[0], vals[1]), nil
+}
+
+func formatShadowOffset(pt image.Point) string {
+	return fmt.Sprintf("%d,%d", pt.X, pt.Y)
 }
 
 func parseRect(val string) (image.Rectangle, error) {

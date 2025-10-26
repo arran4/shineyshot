@@ -21,6 +21,12 @@ shineyshot annotate capture window "Settings Panel"
 shineyshot annotate capture region 0,0,1440,900
 ```
 
+### Drop shadows
+
+When you want a subtle frame around a screenshot, consider enabling the drop-shadow flags. `--shadow` turns the effect on for the command while `--shadow-radius`, `--shadow-offset`, and `--shadow-opacity` let you tune the blur, offset, and transparency to your liking. The same defaults carry into the editor so subsequent captures and pasted images can reuse them.
+
+Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard—to apply the configured shadow once per tab. The control politely steps aside after it runs so you do not accidentally stack multiple shadows on the same image.
+
 ### Screenshot
 
 ![annotate-window.png](doc/annotate-window.png)
