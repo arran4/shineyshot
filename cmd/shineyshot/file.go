@@ -38,32 +38,54 @@ func parseFileCmd(args []string, r *root) (*fileCmd, error) {
 }
 
 func (f *fileCmd) Run() error {
+	child := f.root.subcommand("file")
+	defer func() {
+		f.root.state = child.state
+	}()
 	switch f.op {
-	case "snapshot":
+	case "capture":
 		args := append([]string{"-output", f.path}, f.args...)
-		cmd, err := parseSnapshotCmd(args, f.root)
+		cmd, err := parseSnapshotCmd(args, child)
 		if err != nil {
 			return err
 		}
 		return cmd.Run()
 	case "draw":
 		args := append([]string{"-file", f.path, "-output", f.path}, f.args...)
-		cmd, err := parseDrawCmd(args, f.root)
+		cmd, err := parseDrawCmd(args, child)
 		if err != nil {
 			return err
 		}
 		return cmd.Run()
 	case "annotate":
-		args := []string{"open-file", "-file", f.path, "-output", f.path}
-		args = append(args, f.args...)
-		cmd, err := parseAnnotateCmd(args, f.root)
+		flags := []string{}
+		action := []string{}
+		for i := 0; i < len(f.args); i++ {
+			token := f.args[i]
+			if strings.HasPrefix(token, "-") {
+				flags = append(flags, token)
+				if i+1 < len(f.args) && !strings.HasPrefix(f.args[i+1], "-") {
+					flags = append(flags, f.args[i+1])
+					i++
+				}
+				continue
+			}
+			action = append(action, f.args[i:]...)
+			break
+		}
+		args := append([]string{"-file", f.path}, flags...)
+		if len(action) == 0 {
+			action = []string{"open"}
+		}
+		args = append(args, action...)
+		cmd, err := parseAnnotateCmd(args, child)
 		if err != nil {
 			return err
 		}
 		return cmd.Run()
 	case "preview":
 		args := append([]string{"-file", f.path}, f.args...)
-		cmd, err := parsePreviewCmd(args, f.root)
+		cmd, err := parsePreviewCmd(args, child)
 		if err != nil {
 			return err
 		}

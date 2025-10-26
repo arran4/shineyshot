@@ -1,3 +1,3 @@
-Usage: {{.Program}} snapshot [flags]
-Capture a PNG using the XDG desktop portal on Linux.
+Usage: {{.Program}} snapshot [flags] [capture] <screen|window|region> [selector|x0,y0,x1,y1]
+Capture a PNG using the XDG desktop portal on Linux. Use -select or -rect to script selectors.
 {{template "flags" .FlagSet}}
