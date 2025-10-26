@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
-	"github.com/example/shineyshot/internal/capture"
 )
 
 // annotateCmd represents the annotate subcommand.
@@ -94,26 +93,26 @@ func (a *annotateCmd) Run() error {
 		opts := capture.CaptureOptions{}
 		switch a.target {
 		case "screen":
-			img, err = capture.CaptureScreenshot(a.selector, opts)
+			img, err = captureScreenshotFn(a.selector, opts)
 		case "window":
-			img, err = capture.CaptureWindow(a.selector, opts)
+			img, err = captureWindowFn(a.selector, opts)
 		case "region":
 			rectSpec := a.rect
 			if rectSpec == "" {
 				rectSpec = a.selector
 			}
 			if strings.TrimSpace(rectSpec) == "" {
-				img, err = capture.CaptureRegion(opts)
+        img, err = captureRegionFn(opts)
 			} else {
 				var rect image.Rectangle
 				rect, err = parseRect(rectSpec)
 				if err == nil {
-					img, err = capture.CaptureRegionRect(rect, opts)
+					img, err = captureRegionRectFn(rect, opts)
 				}
 			}
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to capture %s: %w", a.target, err)
 		}
 		if a.root != nil {
 			a.root.notifyCapture(a.captureDetail(), img)
@@ -121,16 +120,14 @@ func (a *annotateCmd) Run() error {
 	case "open":
 		f, err := os.Open(a.file)
 		if err != nil {
-			return err
+			return fmt.Errorf("open %q: %w", a.file, err)
 		}
 		dec, err := png.Decode(f)
-		if cerr := f.Close(); cerr != nil {
-			if err == nil {
-				err = cerr
-			}
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("decode %q: %w", a.file, err)
 		}
 		img = image.NewRGBA(dec.Bounds())
 		draw.Draw(img, img.Bounds(), dec, image.Point{}, draw.Src)

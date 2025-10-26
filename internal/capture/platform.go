@@ -45,16 +45,28 @@ type WindowInfo struct {
 
 // ListMonitors retrieves all monitors using the platform backend.
 func ListMonitors() ([]MonitorInfo, error) {
-	return backend.ListMonitors()
+	monitors, err := backend.ListMonitors()
+	if err != nil {
+		return nil, fmt.Errorf("list monitors: %w", err)
+	}
+	return monitors, nil
 }
 
 // ListWindows retrieves the available top-level windows using the platform backend.
 func ListWindows() ([]WindowInfo, error) {
-	return backend.ListWindows()
+	windows, err := backend.ListWindows()
+	if err != nil {
+		return nil, fmt.Errorf("list windows: %w", err)
+	}
+	return windows, nil
 }
 
 func captureWindowImage(id uint32) (*image.RGBA, error) {
-	return backend.CaptureWindowImage(id)
+	img, err := backend.CaptureWindowImage(id)
+	if err != nil {
+		return nil, fmt.Errorf("capture window image: %w", err)
+	}
+	return img, nil
 }
 
 // FindMonitor resolves a monitor selector against the provided list.
