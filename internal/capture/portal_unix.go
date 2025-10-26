@@ -67,6 +67,19 @@ func portalScreenshot(interactive bool, captureOpts CaptureOptions) (*image.RGBA
 	return nil, fmt.Errorf("portal screenshot: response missing image data")
 }
 
+func isPortalUnsupportedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var dbusErr *dbus.Error
+	if errors.As(err, &dbusErr) {
+		if dbusErr.Name == "org.freedesktop.portal.Error.NotSupported" {
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "not supported")
+}
+
 func newPortalHandleToken() string {
 	return fmt.Sprintf("shineyshot-%d", time.Now().UnixNano())
 }

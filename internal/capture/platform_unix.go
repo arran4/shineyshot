@@ -21,6 +21,17 @@ func newBackend() platformBackend {
 	return x11Backend{}
 }
 
+func runningOnWayland() bool {
+	sessionType := strings.ToLower(strings.TrimSpace(os.Getenv("XDG_SESSION_TYPE")))
+	if sessionType == "wayland" {
+		return true
+	}
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		return true
+	}
+	return false
+}
+
 func (x11Backend) ListMonitors() ([]MonitorInfo, error) {
 	conn, err := xgb.NewConn()
 	if err != nil {
