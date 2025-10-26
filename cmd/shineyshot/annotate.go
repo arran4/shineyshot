@@ -190,6 +190,7 @@ func (a *annotateCmd) Run() error {
 			Tab:       "Tab 1",
 			LastSaved: lastSaved,
 		})),
+		appstate.WithVersion(version),
 		appstate.WithShadowDefaults(shadowOpts),
 		appstate.WithInitialShadowApplied(a.shadow),
 		appstate.WithInitialShadowOffset(initialShadowOffset),

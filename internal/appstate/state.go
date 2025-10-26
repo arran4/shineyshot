@@ -15,6 +15,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"time"
 	"unicode"
@@ -36,6 +37,7 @@ type AppState struct {
 	WidthIdx             int
 	Mode                 Mode
 	Title                string
+	Version              string
 	ShadowDefaults       render.ShadowOptions
 	InitialShadowApplied bool
 	InitialShadowOffset  image.Point
@@ -74,6 +76,11 @@ func WithMode(mode Mode) Option { return func(a *AppState) { a.Mode = mode } }
 
 // WithTitle sets the window title displayed in the UI.
 func WithTitle(title string) Option { return func(a *AppState) { a.Title = title } }
+
+// WithVersion sets the application version displayed in the UI.
+func WithVersion(version string) Option {
+	return func(a *AppState) { a.Version = strings.TrimSpace(version) }
+}
 
 // WithShadowDefaults configures the drop shadow parameters used by the toolbar action.
 func WithShadowDefaults(opts render.ShadowOptions) Option {
@@ -129,6 +136,7 @@ func New(opts ...Option) *AppState {
 	if a.Title == "" {
 		a.Title = ProgramTitle
 	}
+	a.Version = strings.TrimSpace(a.Version)
 	a.tabState.Current = -1
 	return a
 }
@@ -332,14 +340,23 @@ func (a *AppState) Main(s screen.Screen) {
 
 	// Ensure the toolbar is wide enough to fit the program title and all
 	// tool button labels so the UI contents are not clipped on start up.
-	title := a.Title
-	if title == "" {
-		title = ProgramTitle
+	windowTitle := strings.TrimSpace(a.Title)
+	if windowTitle == "" {
+		windowTitle = ProgramTitle
+	}
+	toolbarVersion := ""
+	if a.Version != "" {
+		toolbarVersion = fmt.Sprintf("%s v%s", ProgramTitle, a.Version)
 	}
 	d := &font.Drawer{Face: basicfont.Face7x13}
-	max := d.MeasureString(title).Ceil() + 8 // padding
+	max := d.MeasureString(ProgramTitle).Ceil() + 8 // padding
 	if icon := toolbarIconImage(); icon != nil {
 		max += icon.Bounds().Dx() + 4
+	}
+	if toolbarVersion != "" {
+		if w := d.MeasureString(toolbarVersion).Ceil() + 8; w > max {
+			max = w
+		}
 	}
 	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "H:Num", "T:Text", "$:Shadow"}
 	for _, lbl := range toolLabels {
@@ -354,7 +371,7 @@ func (a *AppState) Main(s screen.Screen) {
 
 	width := rgba.Bounds().Dx() + toolbarWidth
 	height := rgba.Bounds().Dy() + tabHeight + bottomHeight
-	w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height, Title: title})
+	w, err := s.NewWindow(&screen.NewWindowOptions{Width: width, Height: height, Title: windowTitle})
 	if err != nil {
 		log.Fatalf("new window: %v", err)
 	}
@@ -806,7 +823,7 @@ func (a *AppState) Main(s screen.Screen) {
 				messageUntil:      messageUntil,
 				handleShortcut:    handleShortcut,
 				annotationEnabled: annotationEnabled,
-				title:             title,
+				versionLabel:      toolbarVersion,
 			}
 			select {
 			case paintCh <- st:
