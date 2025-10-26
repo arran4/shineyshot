@@ -9,7 +9,10 @@ Operations:
   annotate [flags] open   open the file in the annotation UI for manual edits
   preview                 view the file in a simple Linux viewer window
 
-The nested command inherits the provided path. Supply `-output` or `-file` again
-inside the subcommand to write to a different destination.
+The nested command inherits the provided path. The wrapper pre-populates
+`-output` when calling into `snapshot` and both `-file`/`-output` for `draw`,
+`annotate`, and `preview` so the subcommand works against the managed file.
+Supply the flags again inside the subcommand to write to a different
+destination.
 
 {{template "flags" .FlagSet}}
