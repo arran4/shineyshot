@@ -386,7 +386,7 @@ func (a *AppState) Main(s screen.Screen) {
 		registerCommonActions()
 
 		register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
-			img, err := capture.CaptureScreenshot("")
+			img, err := capture.CaptureScreenshot("", capture.CaptureOptions{})
 			if err != nil {
 				log.Printf("capture screenshot: %v", err)
 				return
