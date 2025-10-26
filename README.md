@@ -103,8 +103,6 @@ shineyshot draw -file "$target" text 40 60 "Build: ${CI_PIPELINE_ID:-local}"
 shineyshot draw -file "$target" arrow 120 120 320 180
 ```
 
----
-
 ## CLI Background Mode
 
 Run ShineyShot as a background service and communicate via UNIX sockets. The daemon runs within the current user session so scripts can reuse capture permissions without additional prompts.
@@ -139,8 +137,6 @@ stop requested for team-room
 ```
 
 Add `background serve` when embedding ShineyShot into another long-lived process. Store helpers alongside other dotfiles utilities; for example, `~/.local/bin/shineyshot-window` can wrap `shineyshot background run default snapshot --mode window --window "$1"` so scripts capture consistent evidence before processing.
-
----
 
 ## Interactive Mode
 
