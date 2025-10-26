@@ -78,6 +78,7 @@ func (p *previewCmd) Run() error {
 			Mode: "Preview",
 			Tab:  "Tab 1",
 		})),
+		appstate.WithVersion(version),
 	)
 	st.Run()
 	return nil

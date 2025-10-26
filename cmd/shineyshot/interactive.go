@@ -698,6 +698,7 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 				LastSaved:  detail,
 				Background: background,
 			})),
+			appstate.WithVersion(version),
 		)
 		go st.Run()
 		i.writeln(i.stdout, "preview window opened")
@@ -737,6 +738,7 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 			LastSaved:  detail,
 			Background: i.backgroundSession,
 		})),
+		appstate.WithVersion(version),
 		appstate.WithSettingsListener(func(cIdx, wIdx int) {
 			i.mu.Lock()
 			i.colorIdx = cIdx

@@ -672,15 +672,13 @@ func numberBoxHeight(size int) int {
 	return h
 }
 
-func drawTabs(dst *image.RGBA, tabs []Tab, current int, title string) {
+func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	// background for title area
 	draw.Draw(dst, image.Rect(0, 0, toolbarWidth, tabHeight),
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 
 	// program title in the top-left corner
-	if title == "" {
-		title = ProgramTitle
-	}
+	title := ProgramTitle
 	icon := toolbarIconImage()
 	textX := 4
 	if icon != nil {
@@ -718,7 +716,7 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int, title string) {
 		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string), annotationEnabled bool) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string), annotationEnabled bool, versionLabel string) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
 	shortcutRects = shortcutRects[:0]
@@ -760,6 +758,11 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	}
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
+	if versionLabel != "" {
+		d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+			Dot: fixed.P(4, y)}
+		d.DrawString(versionLabel)
+	}
 	meas := &font.Drawer{Face: basicfont.Face7x13}
 	for i := range shortcuts {
 		sc := &shortcuts[i]
@@ -1195,7 +1198,7 @@ type paintState struct {
 	messageUntil      time.Time
 	handleShortcut    func(string)
 	annotationEnabled bool
-	title             string
+	versionLabel      string
 }
 
 func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintState) {
@@ -1247,9 +1250,9 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 		return
 	}
 
-	drawTabs(b.RGBA(), st.tabs, st.current, st.title)
+	drawTabs(b.RGBA(), st.tabs, st.current)
 	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx, st.annotationEnabled, st.tabs[st.current].ShadowApplied)
-	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut, st.annotationEnabled)
+	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut, st.annotationEnabled, st.versionLabel)
 
 	if ctx.Err() != nil {
 		return
