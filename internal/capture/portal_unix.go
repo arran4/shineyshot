@@ -73,11 +73,24 @@ func isPortalUnsupportedError(err error) bool {
 	}
 	var dbusErr *dbus.Error
 	if errors.As(err, &dbusErr) {
-		if dbusErr.Name == "org.freedesktop.portal.Error.NotSupported" {
+		switch dbusErr.Name {
+		case "org.freedesktop.portal.Error.NotSupported":
+			return true
+		case "org.freedesktop.DBus.Error.ServiceUnknown":
+			// The portal service is not available on the session bus.
+			return true
+		case "org.freedesktop.DBus.Error.NoReply", "org.freedesktop.DBus.Error.Disconnected":
+			// The portal service crashed or exited before replying. Treat this the
+			// same as the portal not being supported so that we can fall back to
+			// PipeWire-based capture methods.
 			return true
 		}
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "not supported")
+	lower := strings.ToLower(err.Error())
+	if strings.Contains(lower, "not supported") {
+		return true
+	}
+	return strings.Contains(lower, "disconnected from message bus without replying")
 }
 
 func newPortalHandleToken() string {

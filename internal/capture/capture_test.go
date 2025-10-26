@@ -2,6 +2,7 @@ package capture
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"strings"
 	"testing"
@@ -70,6 +71,39 @@ func TestScreenshotFallsBackToPipewire(t *testing.T) {
 
 	portalScreenshotFn = func(bool, CaptureOptions) (*image.RGBA, error) {
 		return nil, &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
+	}
+
+	called := false
+	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	pipewireScreenshotFn = func(CaptureOptions) (*image.RGBA, error) {
+		called = true
+		return want, nil
+	}
+
+	got, err := CaptureScreenshot("", CaptureOptions{})
+	if err != nil {
+		t.Fatalf("CaptureScreenshot returned error: %v", err)
+	}
+	if !called {
+		t.Fatalf("expected pipewire fallback to be used")
+	}
+	if got != want {
+		t.Fatalf("expected pipewire result, got %#v", got)
+	}
+}
+
+func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
+	t.Helper()
+
+	prevPortal := portalScreenshotFn
+	prevPipewire := pipewireScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+		pipewireScreenshotFn = prevPipewire
+	})
+
+	portalScreenshotFn = func(bool, CaptureOptions) (*image.RGBA, error) {
+		return nil, fmt.Errorf("portal screenshot call: %w", &dbus.Error{Name: "org.freedesktop.DBus.Error.Disconnected"})
 	}
 
 	called := false
