@@ -12,6 +12,7 @@ import (
 
 	"github.com/example/shineyshot/internal/appstate"
 	"github.com/example/shineyshot/internal/capture"
+	"github.com/example/shineyshot/internal/clipboard"
 )
 
 // annotateCmd represents the annotate subcommand.

@@ -172,6 +172,8 @@ func (i *interactiveCmd) executeLine(line string) (bool, error) {
 		i.handleShow(false)
 	case "preview":
 		i.handleShow(true)
+	case "tabs":
+		i.handleTabs(args)
 	case "save":
 		i.handleSave(args)
 	case "savetmp":
@@ -208,6 +210,7 @@ func (i *interactiveCmd) printHelp() {
 	i.writeln(i.stdout, "  widths                     list stroke widths")
 	i.writeln(i.stdout, "  show                       open synced annotation window")
 	i.writeln(i.stdout, "  preview                    open copy in separate window")
+	i.writeln(i.stdout, "  tabs [list|switch|next|prev|close]   manage annotation tabs")
 	i.writeln(i.stdout, "  save FILE                  save image to FILE")
 	i.writeln(i.stdout, "  savetmp                    save to /tmp with a unique filename")
 	i.writeln(i.stdout, "  savepictures               save to your Pictures directory")
@@ -745,8 +748,124 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 	i.state = st
 	i.r.state = st
 	i.mu.Unlock()
+	st.SetTabListener(i.onTabChange)
 	go st.Run()
 	i.writeln(i.stdout, "annotation window opened")
+}
+
+func (i *interactiveCmd) onTabChange(change appstate.TabChange) {
+	if change.Image == nil {
+		return
+	}
+	i.mu.Lock()
+	i.img = change.Image
+	i.widthIdx = clampIndex(change.WidthIdx, len(i.widths))
+	i.mu.Unlock()
+}
+
+func (i *interactiveCmd) handleTabs(args []string) {
+	i.mu.RLock()
+	st := i.state
+	i.mu.RUnlock()
+	if st == nil {
+		i.writeln(i.stderr, "annotation window not open; run 'show' first")
+		return
+	}
+	snapshot := st.TabsState()
+	if len(snapshot.Tabs) == 0 {
+		i.writeln(i.stderr, "no tabs available")
+		return
+	}
+	if len(args) == 0 || strings.EqualFold(args[0], "list") {
+		i.printTabList(snapshot)
+		return
+	}
+	action := strings.ToLower(args[0])
+	switch action {
+	case "switch":
+		if len(args) < 2 {
+			i.writeln(i.stderr, "usage: tabs switch INDEX")
+			return
+		}
+		idx, err := parseTabNumber(args[1])
+		if err != nil {
+			i.writeln(i.stderr, err.Error())
+			return
+		}
+		if idx < 0 || idx >= len(snapshot.Tabs) {
+			i.writef(i.stderr, "tab %d does not exist\n", idx+1)
+			return
+		}
+		title := tabDisplayTitle(snapshot.Tabs[idx])
+		if err := st.ActivateTab(idx); err != nil {
+			i.writeln(i.stderr, err.Error())
+			return
+		}
+		i.writef(i.stdout, "switched to tab %d (%s)\n", idx+1, title)
+	case "next":
+		idx := snapshot.Current
+		if idx < 0 {
+			idx = 0
+		}
+		idx++
+		if idx >= len(snapshot.Tabs) {
+			idx = 0
+		}
+		title := tabDisplayTitle(snapshot.Tabs[idx])
+		if err := st.ActivateTab(idx); err != nil {
+			i.writeln(i.stderr, err.Error())
+			return
+		}
+		i.writef(i.stdout, "switched to tab %d (%s)\n", idx+1, title)
+	case "prev":
+		idx := snapshot.Current
+		if idx < 0 {
+			idx = 0
+		}
+		idx--
+		if idx < 0 {
+			idx = len(snapshot.Tabs) - 1
+		}
+		title := tabDisplayTitle(snapshot.Tabs[idx])
+		if err := st.ActivateTab(idx); err != nil {
+			i.writeln(i.stderr, err.Error())
+			return
+		}
+		i.writef(i.stdout, "switched to tab %d (%s)\n", idx+1, title)
+	case "close":
+		idx := snapshot.Current
+		if len(args) > 1 {
+			parsed, err := parseTabNumber(args[1])
+			if err != nil {
+				i.writeln(i.stderr, err.Error())
+				return
+			}
+			idx = parsed
+		}
+		if idx < 0 || idx >= len(snapshot.Tabs) {
+			i.writef(i.stderr, "tab %d does not exist\n", idx+1)
+			return
+		}
+		title := tabDisplayTitle(snapshot.Tabs[idx])
+		if err := st.CloseTab(idx); err != nil {
+			i.writeln(i.stderr, err.Error())
+			return
+		}
+		i.writef(i.stdout, "closed tab %d (%s)\n", idx+1, title)
+	default:
+		i.writeln(i.stderr, "usage: tabs [list|switch INDEX|next|prev|close [INDEX]]")
+	}
+}
+
+func (i *interactiveCmd) printTabList(state appstate.TabsState) {
+	i.writeln(i.stdout, "tabs:")
+	for _, tb := range state.Tabs {
+		marker := " "
+		if tb.Index == state.Current {
+			marker = "*"
+		}
+		i.writef(i.stdout, "%s %d: %s\n", marker, tb.Index+1, tabDisplayTitle(tb))
+	}
 }
 
 func (i *interactiveCmd) handleSave(args []string) {
@@ -1180,6 +1299,24 @@ func parseInts(args []string, count int) ([]int, error) {
 		vals[idx] = v
 	}
 	return vals, nil
+}
+
+func tabDisplayTitle(summary appstate.TabSummary) string {
+	if strings.TrimSpace(summary.Title) != "" {
+		return summary.Title
+	}
+	return fmt.Sprintf("%d", summary.Index+1)
+}
+
+func parseTabNumber(arg string) (int, error) {
+	idx, err := strconv.Atoi(arg)
+	if err != nil {
+		return 0, fmt.Errorf("invalid tab number %q", arg)
+	}
+	if idx <= 0 {
+		return 0, fmt.Errorf("tab numbers start at 1")
+	}
+	return idx - 1, nil
 }
 
 func clampIndex(idx, size int) int {

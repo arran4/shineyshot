@@ -17,6 +17,7 @@ Available commands:
   widths                     list stroke widths
   show                       open a synced annotation window
   preview                    open a detached copy in a window
+  tabs [list|switch|next|prev|close]   manage annotation tabs
   save FILE                  save the image to FILE
   savetmp                    save to /tmp with a unique filename
   savepictures               save to your Pictures directory
