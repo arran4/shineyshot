@@ -66,7 +66,7 @@ nfpms:
         type: doc
       - src: docs/shineyshot.1
         dst: /usr/share/man/man1/shineyshot.1
-        type: man
+        type: doc
       - src: assets/shineyshot.desktop
         dst: /usr/share/applications/shineyshot.desktop
       - src: assets/icons/shineyshot.svg
