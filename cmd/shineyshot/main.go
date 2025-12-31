@@ -104,6 +104,8 @@ func (r *root) Run(args []string) error {
 		cmd, err = parseColorsCmd(subArgs, r)
 	case "widths":
 		cmd, err = parseWidthsCmd(subArgs, r)
+	case "test":
+		cmd, err = parseTestCmd(subArgs, r)
 	case "version":
 		cmd = &versionCmd{r: r}
 	default:

@@ -1181,53 +1181,46 @@ func cropImage(img *image.RGBA, rect image.Rectangle) *image.RGBA {
 	return out
 }
 
-type paintState struct {
-	width, height     int
-	tabs              []Tab
-	current           int
-	tool              Tool
-	colorIdx          int
-	numberIdx         int
-	cropping          bool
-	cropRect          image.Rectangle
-	cropStart         image.Point
-	textInputActive   bool
-	textInput         string
-	textPos           image.Point
-	message           string
-	messageUntil      time.Time
-	handleShortcut    func(string)
-	annotationEnabled bool
-	versionLabel      string
+type PaintState struct {
+	Width, Height     int
+	Tabs              []Tab
+	Current           int
+	Tool              Tool
+	ColorIdx          int
+	NumberIdx         int
+	Cropping          bool
+	CropRect          image.Rectangle
+	CropStart         image.Point
+	TextInputActive   bool
+	TextInput         string
+	TextPos           image.Point
+	Message           string
+	MessageUntil      time.Time
+	HandleShortcut    func(string)
+	AnnotationEnabled bool
+	VersionLabel      string
 }
 
-func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintState) {
-	b, err := s.NewBuffer(image.Point{st.width, st.height})
-	if err != nil {
-		log.Printf("new buffer: %v", err)
-		return
-	}
-	defer b.Release()
-
-	drawBackdrop(b.RGBA())
-	if ctx.Err() != nil {
+func DrawScene(ctx context.Context, b *image.RGBA, st PaintState) {
+	drawBackdrop(b)
+	if ctx != nil && ctx.Err() != nil {
 		return
 	}
 
-	img := st.tabs[st.current].Image
-	zoom := st.tabs[st.current].Zoom
-	base := imageRect(img, st.width, st.height, zoom)
-	off := st.tabs[st.current].Offset
+	img := st.Tabs[st.Current].Image
+	zoom := st.Tabs[st.Current].Zoom
+	base := imageRect(img, st.Width, st.Height, zoom)
+	off := st.Tabs[st.Current].Offset
 	dst := base.Add(image.Pt(int(float64(off.X)*zoom), int(float64(off.Y)*zoom)))
-	xdraw.NearestNeighbor.Scale(b.RGBA(), dst, img, img.Bounds(), draw.Over, nil)
-	if ctx.Err() != nil {
+	xdraw.NearestNeighbor.Scale(b, dst, img, img.Bounds(), draw.Over, nil)
+	if ctx != nil && ctx.Err() != nil {
 		return
 	}
 
-	if st.tool == ToolCrop && (st.cropping || !st.cropRect.Empty()) {
-		sel := st.cropRect
-		if st.cropping {
-			sel = image.Rect(st.cropStart.X, st.cropStart.Y, st.cropStart.X, st.cropStart.Y).Union(sel)
+	if st.Tool == ToolCrop && (st.Cropping || !st.CropRect.Empty()) {
+		sel := st.CropRect
+		if st.Cropping {
+			sel = image.Rect(st.CropStart.X, st.CropStart.Y, st.CropStart.X, st.CropStart.Y).Union(sel)
 		}
 		r := image.Rect(
 			dst.Min.X+int(float64(sel.Min.X)*zoom),
@@ -1235,54 +1228,65 @@ func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st paintSt
 			dst.Min.X+int(float64(sel.Max.X)*zoom),
 			dst.Min.Y+int(float64(sel.Max.Y)*zoom),
 		)
-		drawDashedRect(b.RGBA(), r, 4, 2, color.White, color.Black)
+		drawDashedRect(b, r, 4, 2, color.White, color.Black)
 		for _, hr := range cropHandleRects(r) {
-			if ctx.Err() != nil {
+			if ctx != nil && ctx.Err() != nil {
 				return
 			}
-			draw.Draw(b.RGBA(), hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
-			drawRect(b.RGBA(), hr, color.Black, 1)
-			drawDashedRect(b.RGBA(), hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
+			draw.Draw(b, hr, &image.Uniform{color.White}, image.Point{}, draw.Src)
+			drawRect(b, hr, color.Black, 1)
+			drawDashedRect(b, hr, 2, 1, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 0, 255, 255})
 		}
 	}
 
-	if ctx.Err() != nil {
+	if ctx != nil && ctx.Err() != nil {
 		return
 	}
 
-	drawTabs(b.RGBA(), st.tabs, st.current)
-	drawToolbar(b.RGBA(), st.tool, st.colorIdx, st.tabs[st.current].WidthIdx, st.numberIdx, st.annotationEnabled, st.tabs[st.current].ShadowApplied)
-	drawShortcuts(b.RGBA(), st.width, st.height, st.tool, st.textInputActive, zoom, st.handleShortcut, st.annotationEnabled, st.versionLabel)
+	drawTabs(b, st.Tabs, st.Current)
+	drawToolbar(b, st.Tool, st.ColorIdx, st.Tabs[st.Current].WidthIdx, st.NumberIdx, st.AnnotationEnabled, st.Tabs[st.Current].ShadowApplied)
+	drawShortcuts(b, st.Width, st.Height, st.Tool, st.TextInputActive, zoom, st.HandleShortcut, st.AnnotationEnabled, st.VersionLabel)
 
-	if ctx.Err() != nil {
+	if ctx != nil && ctx.Err() != nil {
 		return
 	}
 
-	if st.message != "" && time.Now().Before(st.messageUntil) {
-		d := &font.Drawer{Dst: b.RGBA(), Src: image.Black, Face: messageFace}
-		wmsg := d.MeasureString(st.message).Ceil()
+	if st.Message != "" && time.Now().Before(st.MessageUntil) {
+		d := &font.Drawer{Dst: b, Src: image.Black, Face: messageFace}
+		wmsg := d.MeasureString(st.Message).Ceil()
 		ascent := messageFace.Metrics().Ascent.Ceil()
 		descent := messageFace.Metrics().Descent.Ceil()
-		px := (st.width - wmsg) / 2
-		py := (st.height-ascent-descent)/2 + ascent
+		px := (st.Width - wmsg) / 2
+		py := (st.Height-ascent-descent)/2 + ascent
 		rect := image.Rect(px-8, py-ascent-8, px+wmsg+8, py+descent+8)
-		draw.Draw(b.RGBA(), rect, &image.Uniform{color.RGBA{255, 255, 255, 230}}, image.Point{}, draw.Over)
-		drawRect(b.RGBA(), rect, color.Black, 2)
+		draw.Draw(b, rect, &image.Uniform{color.RGBA{255, 255, 255, 230}}, image.Point{}, draw.Over)
+		drawRect(b, rect, color.Black, 2)
 		d.Dot = fixed.P(px, py)
-		d.DrawString(st.message)
+		d.DrawString(st.Message)
 	}
 
-	if ctx.Err() != nil {
+	if ctx != nil && ctx.Err() != nil {
 		return
 	}
 
-	if st.textInputActive {
-		d := &font.Drawer{Dst: b.RGBA(), Src: image.NewUniform(palette[st.colorIdx]), Face: textFaces[textSizeIdx]}
-		px := dst.Min.X + int(float64(st.textPos.X)*zoom)
-		py := dst.Min.Y + int(float64(st.textPos.Y)*zoom)
+	if st.TextInputActive {
+		d := &font.Drawer{Dst: b, Src: image.NewUniform(palette[st.ColorIdx]), Face: textFaces[textSizeIdx]}
+		px := dst.Min.X + int(float64(st.TextPos.X)*zoom)
+		py := dst.Min.Y + int(float64(st.TextPos.Y)*zoom)
 		d.Dot = fixed.P(px, py)
-		d.DrawString(st.textInput + "|")
+		d.DrawString(st.TextInput + "|")
 	}
+}
+
+func drawFrame(ctx context.Context, s screen.Screen, w screen.Window, st PaintState) {
+	b, err := s.NewBuffer(image.Point{st.Width, st.Height})
+	if err != nil {
+		log.Printf("new buffer: %v", err)
+		return
+	}
+	defer b.Release()
+
+	DrawScene(ctx, b.RGBA(), st)
 
 	if ctx.Err() != nil {
 		return

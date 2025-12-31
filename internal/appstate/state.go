@@ -426,9 +426,9 @@ func (a *AppState) Main(s screen.Screen) {
 	var paintMu sync.Mutex
 	var paintCancel context.CancelFunc
 	var dropCount int
-	var lastPaint paintState
+	var lastPaint PaintState
 	_ = lastPaint
-	paintCh := make(chan paintState, 1)
+	paintCh := make(chan PaintState, 1)
 	go func() {
 		for st := range paintCh {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -805,25 +805,25 @@ func (a *AppState) Main(s screen.Screen) {
 				}
 			}
 			paintMu.Unlock()
-			st := paintState{
-				width:             width,
-				height:            height,
-				tabs:              tabs,
-				current:           current,
-				tool:              tool,
-				colorIdx:          colorIdx,
-				numberIdx:         numberIdx,
-				cropping:          active == actionCrop,
-				cropRect:          cropRect,
-				cropStart:         cropStart,
-				textInputActive:   textInputActive,
-				textInput:         textInput,
-				textPos:           textPos,
-				message:           message,
-				messageUntil:      messageUntil,
-				handleShortcut:    handleShortcut,
-				annotationEnabled: annotationEnabled,
-				versionLabel:      toolbarVersion,
+			st := PaintState{
+				Width:             width,
+				Height:            height,
+				Tabs:              tabs,
+				Current:           current,
+				Tool:              tool,
+				ColorIdx:          colorIdx,
+				NumberIdx:         numberIdx,
+				Cropping:          active == actionCrop,
+				CropRect:          cropRect,
+				CropStart:         cropStart,
+				TextInputActive:   textInputActive,
+				TextInput:         textInput,
+				TextPos:           textPos,
+				Message:           message,
+				MessageUntil:      messageUntil,
+				HandleShortcut:    handleShortcut,
+				AnnotationEnabled: annotationEnabled,
+				VersionLabel:      toolbarVersion,
 			}
 			select {
 			case paintCh <- st:
