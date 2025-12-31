@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -139,7 +140,7 @@ func (c *testVerificationCmd) Run() error {
 	}
 
 	outImg := image.NewRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
-	appstate.DrawScene(nil, outImg, st) // Passing nil context is fine as we don't need cancellation
+	appstate.DrawScene(context.Background(), outImg, st)
 
 	outF, err := os.Create(c.output)
 	if err != nil {
