@@ -76,30 +76,36 @@ Inside the UI you can tap the `$` toolbar button—or press `$` on the keyboard�
 
 ## Snapshot command
 
-Fire off a one-off screenshot without starting the editor. The `snapshot` subcommand exposes flags that mirror the capture paths inside the other modes so you can experiment from the terminal:
+Fire off a one-off screenshot without starting the editor. The `snapshot` subcommand accepts both flags and positional arguments so you can experiment from the terminal:
 
 ```bash
 # Save the full desktop from display 0 into screenshot.png
-shineyshot snapshot -mode screen -display 0 -output screenshot.png
+shineyshot snapshot screen 0 -output screenshot.png
 
 # Target a specific window by substring match and keep the PNG on disk
-shineyshot snapshot -mode window -window "Settings" -output window.png
+shineyshot snapshot window "Settings" -output window.png
 
 # Pipe a capture directly to another process without touching the filesystem
-shineyshot snapshot -mode screen -stdout | file -
+shineyshot snapshot screen -stdout | file -
 
 # Capture a preset region in global coordinates
-shineyshot snapshot -mode region -region 0,0,1280,720 -output region.png
+shineyshot snapshot region 0,0,1280,720 -output region.png
 
 # Launch the interactive region picker provided by the portal
-shineyshot snapshot -mode region -output picked.png
+shineyshot snapshot region -output picked.png
 ```
 
-When `-region` is omitted the command falls back to the same interactive selection dialog used elsewhere in ShineyShot, matching the conditional branch in [`cmd/shineyshot/snapshot.go`](cmd/shineyshot/snapshot.go).
+You can also use flags (like `-mode`, `-display`, and `-window`) if you prefer explicit arguments. When arguments for `region` are omitted, the command falls back to the same interactive selection dialog used elsewhere in ShineyShot, matching the conditional branch in [`cmd/shineyshot/snapshot.go`](cmd/shineyshot/snapshot.go).
 
 ## CLI File Mode
 
 Group repeated operations on a file behind the `file` subcommand. The file path is supplied once and passed to nested commands unless you override it.
+
+Operations:
+- `capture`: Capture screen, window, or region into the file.
+- `draw`: Add markup such as lines, arrows, numbers, text, or masks.
+- `annotate`: Capture via the annotation UI or open the file for manual edits.
+- `preview`: View the file in a simple Linux viewer window.
 
 Behind the scenes the wrapper injects `-output` for `snapshot` and `-file`/`-output` for `draw`, `annotate`, and `preview` before handing control to the nested command. Provide replacement values alongside the nested command if you need a different destination—the extra flags you supply take precedence over the defaults that `file` adds.
 
@@ -252,6 +258,7 @@ Commands:
   widths                     list stroke widths
   show                       open synced annotation window
   preview                    open copy in separate window
+  tabs [list|switch|next|prev|close]   manage annotation tabs
   save FILE                  save image to FILE
   savetmp                    save to /tmp with a unique filename
   savepictures               save to your Pictures directory (defaults to ~/Pictures)
@@ -286,6 +293,16 @@ rectangle drawn
 ```
 
 Launch the shell with `--include-decorations`, `--include-cursor`, and notification flags (for example, `--notify-copy`) to keep those preferences active for every capture command in the session.
+
+## Helper Commands
+
+You can list available palette colors and stroke widths using helper commands:
+
+```bash
+shineyshot colors   # list available palette colors
+shineyshot widths   # list available stroke widths
+shineyshot windows  # list available windows and selectors
+```
 
 ## Global flags and configuration
 
