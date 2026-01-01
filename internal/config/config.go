@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"image/color"
 	"sort"
 	"strings"
 
@@ -26,7 +27,7 @@ type Config struct {
 // New creates a new Config with defaults.
 func New() *Config {
 	return &Config{
-		Theme: "default",
+		Theme: "", // Default to empty to allow fallback to Env/Default
 		Notify: Notify{
 			Capture: false,
 			Save:    false,
@@ -93,9 +94,15 @@ func (c *Config) String() string {
 }
 
 func toHex(c interface{ RGBA() (r, g, b, a uint32) }) string {
+	if rgba, ok := c.(color.RGBA); ok {
+		if rgba.A == 255 {
+			return fmt.Sprintf("#%02X%02X%02X", rgba.R, rgba.G, rgba.B)
+		}
+		return fmt.Sprintf("#%02X%02X%02X%02X", rgba.R, rgba.G, rgba.B, rgba.A)
+	}
+
+	// Fallback for non-color.RGBA types (though unlikely in this app's context)
 	r, g, b, a := c.RGBA()
-	// RGBA() returns alpha-premultiplied values in [0, 65535].
-	// We need non-premultiplied 8-bit values.
 	if a == 0 {
 		return "#00000000"
 	}

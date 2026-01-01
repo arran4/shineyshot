@@ -78,11 +78,9 @@ func newRoot() *root {
 	r.fs.BoolVar(&r.saveAlerts, "notify-save", cfg.Notify.Save, "show a desktop notification after saving an image")
 	r.fs.BoolVar(&r.copyAlerts, "notify-copy", cfg.Notify.Copy, "show a desktop notification after copying to the clipboard")
 
-	defaultTheme := cfg.Theme
-	if defaultTheme == "" {
-		defaultTheme = os.Getenv("SHINEYSHOT_THEME")
-	}
-	r.fs.StringVar(&r.themeName, "theme", defaultTheme, "color theme to use (default, dark, high_contrast, hotdog)")
+	// Precedence: CLI > Env > Config > Default
+	// We set the default value for the flag to "", and handle fallback logic in Run if it remains empty.
+	r.fs.StringVar(&r.themeName, "theme", "", "color theme to use (default, dark, high_contrast, hotdog)")
 	r.fs.Usage = usageFunc(r)
 	return r
 }
@@ -102,6 +100,12 @@ func (r *root) Run(args []string) error {
 
 	// Load theme if specified via CLI, Env, or Config
 	themeName := r.themeName
+	if themeName == "" {
+		themeName = os.Getenv("SHINEYSHOT_THEME")
+	}
+	if themeName == "" {
+		themeName = r.config.Theme
+	}
 
 	var t *theme.Theme
 	// 1. Check loaded themes from Config
@@ -113,7 +117,13 @@ func (r *root) Run(args []string) error {
 		var loadErr error
 		t, loadErr = loader.Load(themeName)
 		if loadErr != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to load theme '%s': %v. using default.\n", themeName, loadErr)
+			// Only warn if a specific theme was requested but failed to load.
+			// If themeName is empty (implicit default), Loader returns Default silently if passed "",
+			// but here we might have "default" explicitly or implicitly.
+			// Loader.Load("") returns Default.
+			if themeName != "" && themeName != "default" {
+				fmt.Fprintf(os.Stderr, "warning: failed to load theme '%s': %v. using default.\n", themeName, loadErr)
+			}
 			t = theme.Default()
 		}
 	}

@@ -11,8 +11,7 @@ import (
 
 type configCmd struct {
 	*root
-	fs     *flag.FlagSet
-	output string
+	fs *flag.FlagSet
 }
 
 func parseConfigCmd(args []string, r *root) (*configCmd, error) {
@@ -58,12 +57,11 @@ func (c *configCmd) runSave() error {
 	path = loader.GetConfigPath()
 
 	if path == "" {
-		// No existing config found, default to XDG
-		home, err := os.UserHomeDir()
+		var err error
+		path, err = loader.GetDefaultPath()
 		if err != nil {
-			return fmt.Errorf("failed to get user home dir: %w", err)
+			return fmt.Errorf("failed to determine default config path: %w", err)
 		}
-		path = filepath.Join(home, ".config", "shineyshot", "config.rc")
 	}
 
 	// Ensure directory exists

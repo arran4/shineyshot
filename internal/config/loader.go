@@ -68,3 +68,20 @@ func (l *Loader) GetConfigPath() string {
 
 	return ""
 }
+
+// GetDefaultPath returns the standard location for a new configuration file.
+func (l *Loader) GetDefaultPath() (string, error) {
+	if l.Version == "dev" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(wd, ".shineyshotrc"), nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "shineyshot", "config.rc"), nil
+}
