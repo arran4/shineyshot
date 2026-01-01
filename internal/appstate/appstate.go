@@ -172,8 +172,8 @@ var (
 	}
 )
 
-var checkerLight = color.RGBA{220, 220, 220, 255}
-var checkerDark = color.RGBA{192, 192, 192, 255}
+var checkerLight = color.RGBA{45, 45, 50, 255}
+var checkerDark = color.RGBA{30, 30, 35, 255}
 
 var textSizes = []float64{12, 16, 20, 24, 32}
 var textFaces []font.Face
@@ -463,10 +463,12 @@ func (cb *CacheButton) Draw(dst *image.RGBA, state ButtonState) {
 	if cb.cache[state] == nil {
 		rect := cb.Button.Rect()
 		img := image.NewRGBA(rect)
+		// Transparent background for cache
+		draw.Draw(img, rect, image.Transparent, image.Point{}, draw.Src)
 		cb.Button.Draw(img, state)
 		cb.cache[state] = img
 	}
-	draw.Draw(dst, cb.Button.Rect(), cb.cache[state], cb.Button.Rect().Min, draw.Src)
+	draw.Draw(dst, cb.Button.Rect(), cb.cache[state], cb.Button.Rect().Min, draw.Over)
 }
 
 func (cb *CacheButton) Rect() image.Rectangle { return cb.Button.Rect() }
@@ -487,16 +489,20 @@ type Shortcut struct {
 }
 
 func (s *Shortcut) Draw(dst *image.RGBA, state ButtonState) {
-	col := color.RGBA{200, 200, 200, 255}
+	col := color.RGBA{50, 50, 55, 255}
+	textCol := color.RGBA{220, 220, 220, 255}
 	switch state {
 	case StateHover:
-		col = color.RGBA{180, 180, 180, 255}
+		col = color.RGBA{70, 70, 75, 255}
+		textCol = color.RGBA{255, 255, 255, 255}
 	case StatePressed:
-		col = color.RGBA{150, 150, 150, 255}
+		col = color.RGBA{90, 90, 100, 255}
+		textCol = color.RGBA{255, 255, 255, 255}
 	}
 	draw.Draw(dst, s.rect, &image.Uniform{col}, image.Point{}, draw.Src)
-	drawRect(dst, s.rect, color.Black, 1)
-	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+	// Add a subtle border
+	drawRect(dst, s.rect, color.RGBA{30, 30, 30, 255}, 1)
+	d := &font.Drawer{Dst: dst, Src: image.NewUniform(textCol), Face: basicfont.Face7x13,
 		Dot: fixed.P(s.rect.Min.X+2, s.rect.Min.Y+14)}
 	d.DrawString(s.label)
 }
@@ -525,15 +531,18 @@ type ToolButton struct {
 }
 
 func (tb *ToolButton) Draw(dst *image.RGBA, state ButtonState) {
-	c := color.RGBA{200, 200, 200, 255}
+	c := color.RGBA{50, 50, 55, 255}
+	textCol := color.RGBA{200, 200, 200, 255}
 	switch state {
 	case StateHover:
-		c = color.RGBA{180, 180, 180, 255}
+		c = color.RGBA{70, 70, 75, 255}
+		textCol = color.RGBA{255, 255, 255, 255}
 	case StatePressed:
-		c = color.RGBA{150, 150, 150, 255}
+		c = color.RGBA{40, 100, 200, 255} // Blueish active state
+		textCol = color.RGBA{255, 255, 255, 255}
 	}
 	draw.Draw(dst, tb.rect, &image.Uniform{c}, image.Point{}, draw.Src)
-	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+	d := &font.Drawer{Dst: dst, Src: image.NewUniform(textCol), Face: basicfont.Face7x13,
 		Dot: fixed.P(tb.rect.Min.X+4, tb.rect.Min.Y+16)}
 	d.DrawString(tb.label)
 }
@@ -561,15 +570,18 @@ type ActionButton struct {
 var _ Button = (*ActionButton)(nil)
 
 func (ab *ActionButton) Draw(dst *image.RGBA, state ButtonState) {
-	c := color.RGBA{200, 200, 200, 255}
+	c := color.RGBA{50, 50, 55, 255}
+	textCol := color.RGBA{200, 200, 200, 255}
 	switch state {
 	case StateHover:
-		c = color.RGBA{180, 180, 180, 255}
+		c = color.RGBA{70, 70, 75, 255}
+		textCol = color.RGBA{255, 255, 255, 255}
 	case StatePressed:
-		c = color.RGBA{150, 150, 150, 255}
+		c = color.RGBA{40, 100, 200, 255}
+		textCol = color.RGBA{255, 255, 255, 255}
 	}
 	draw.Draw(dst, ab.rect, &image.Uniform{c}, image.Point{}, draw.Src)
-	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+	d := &font.Drawer{Dst: dst, Src: image.NewUniform(textCol), Face: basicfont.Face7x13,
 		Dot: fixed.P(ab.rect.Min.X+4, ab.rect.Min.Y+16)}
 	d.DrawString(ab.label)
 }
@@ -637,15 +649,18 @@ type TabButton struct {
 }
 
 func (tb *TabButton) Draw(dst *image.RGBA, state ButtonState) {
-	c := color.RGBA{200, 200, 200, 255}
+	c := color.RGBA{60, 60, 65, 255}
+	textCol := color.RGBA{180, 180, 180, 255}
 	switch state {
 	case StateHover:
-		c = color.RGBA{180, 180, 180, 255}
+		c = color.RGBA{80, 80, 85, 255}
+		textCol = color.RGBA{255, 255, 255, 255}
 	case StatePressed:
-		c = color.RGBA{150, 150, 150, 255}
+		c = color.RGBA{100, 100, 110, 255}
+		textCol = color.RGBA{255, 255, 255, 255}
 	}
 	draw.Draw(dst, tb.rect, &image.Uniform{c}, image.Point{}, draw.Src)
-	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+	d := &font.Drawer{Dst: dst, Src: image.NewUniform(textCol), Face: basicfont.Face7x13,
 		Dot: fixed.P(tb.rect.Min.X+4, tb.rect.Min.Y+16)}
 	d.DrawString(tb.label)
 }
@@ -675,7 +690,7 @@ func numberBoxHeight(size int) int {
 func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	// background for title area
 	draw.Draw(dst, image.Rect(0, 0, toolbarWidth, tabHeight),
-		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
+		&image.Uniform{color.RGBA{40, 40, 45, 255}}, image.Point{}, draw.Src)
 
 	// program title in the top-left corner
 	title := ProgramTitle
@@ -691,7 +706,7 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 		draw.Draw(dst, rect, icon, bounds.Min, draw.Over)
 		textX = rect.Max.X + 4
 	}
-	d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+	d := &font.Drawer{Dst: dst, Src: image.White, Face: basicfont.Face7x13,
 		Dot: fixed.P(textX, 16)}
 	d.DrawString(title)
 
@@ -713,12 +728,12 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int) {
 	}
 	// fill remainder of bar
 	draw.Draw(dst, image.Rect(x, 0, dst.Bounds().Dx(), tabHeight),
-		&image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
+		&image.Uniform{color.RGBA{40, 40, 45, 255}}, image.Point{}, draw.Src)
 }
 
 func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string), annotationEnabled bool, versionLabel string) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
-	draw.Draw(dst, rect, &image.Uniform{color.RGBA{220, 220, 220, 255}}, image.Point{}, draw.Src)
+	draw.Draw(dst, rect, &image.Uniform{color.RGBA{40, 40, 45, 255}}, image.Point{}, draw.Src)
 	shortcutRects = shortcutRects[:0]
 	zoomStr := fmt.Sprintf("+/-:zoom (%.0f%%)", z*100)
 	var shortcuts []Shortcut
@@ -759,7 +774,7 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	x := toolbarWidth + 4
 	y := height - bottomHeight + 16
 	if versionLabel != "" {
-		d := &font.Drawer{Dst: dst, Src: image.Black, Face: basicfont.Face7x13,
+		d := &font.Drawer{Dst: dst, Src: image.White, Face: basicfont.Face7x13,
 			Dot: fixed.P(4, y)}
 		d.DrawString(versionLabel)
 	}

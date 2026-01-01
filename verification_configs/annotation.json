@@ -1,0 +1,20 @@
+{
+  "width": 800,
+  "height": 600,
+  "current_tab": 0,
+  "tool": 5,
+  "color_idx": 3,
+  "annotation_enabled": true,
+  "version_label": "v1.0.0",
+  "tabs": [
+    {
+      "title": "Drawing",
+      "offset": [0, 0],
+      "zoom": 1.0,
+      "next_number": 1,
+      "width_idx": 4,
+      "image_color": [200, 200, 200, 255],
+      "image_size": [600, 400]
+    }
+  ]
+}

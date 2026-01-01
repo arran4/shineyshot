@@ -1,0 +1,23 @@
+{
+  "width": 800,
+  "height": 600,
+  "current_tab": 0,
+  "tool": 1,
+  "color_idx": 2,
+  "cropping": true,
+  "crop_rect": [100, 100, 500, 400],
+  "crop_start": [100, 100],
+  "annotation_enabled": true,
+  "version_label": "v1.0.0",
+  "tabs": [
+    {
+      "title": "Cropping",
+      "offset": [0, 0],
+      "zoom": 1.0,
+      "next_number": 1,
+      "width_idx": 2,
+      "image_color": [50, 50, 150, 255],
+      "image_size": [600, 400]
+    }
+  ]
+}

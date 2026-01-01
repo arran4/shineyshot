@@ -358,7 +358,7 @@ func (a *AppState) Main(s screen.Screen) {
 			max = w
 		}
 	}
-	toolLabels := []string{"M:Move", "R:Crop", "B:Draw", "O:Circle", "L:Line", "A:Arrow", "X:Rect", "H:Num", "T:Text", "$:Shadow"}
+	toolLabels := []string{"Move(M)", "Crop(R)", "Draw(B)", "Circle(O)", "Line(L)", "Arrow(A)", "Rect(X)", "Num(H)", "Text(T)", "Shadow($)"}
 	for _, lbl := range toolLabels {
 		w := d.MeasureString(lbl).Ceil() + 8
 		if w > max {
@@ -584,16 +584,16 @@ func (a *AppState) Main(s screen.Screen) {
 		}
 
 		toolButtons = []*CacheButton{
-			{Button: &ToolButton{label: "M:Move", tool: ToolMove, atype: actionMove}},
-			{Button: &ToolButton{label: "R:Crop", tool: ToolCrop, atype: actionCrop}},
-			{Button: &ToolButton{label: "B:Draw", tool: ToolDraw, atype: actionDraw}},
-			{Button: &ToolButton{label: "O:Circle", tool: ToolCircle, atype: actionDraw}},
-			{Button: &ToolButton{label: "L:Line", tool: ToolLine, atype: actionDraw}},
-			{Button: &ToolButton{label: "A:Arrow", tool: ToolArrow, atype: actionDraw}},
-			{Button: &ToolButton{label: "X:Rect", tool: ToolRect, atype: actionDraw}},
-			{Button: &ToolButton{label: "H:Num", tool: ToolNumber, atype: actionDraw}},
-			{Button: &ToolButton{label: "T:Text", tool: ToolText, atype: actionNone}},
-			{Button: &ToolButton{label: "$:Shadow", tool: ToolShadow, atype: actionNone}},
+			{Button: &ToolButton{label: "Move(M)", tool: ToolMove, atype: actionMove}},
+			{Button: &ToolButton{label: "Crop(R)", tool: ToolCrop, atype: actionCrop}},
+			{Button: &ToolButton{label: "Draw(B)", tool: ToolDraw, atype: actionDraw}},
+			{Button: &ToolButton{label: "Circle(O)", tool: ToolCircle, atype: actionDraw}},
+			{Button: &ToolButton{label: "Line(L)", tool: ToolLine, atype: actionDraw}},
+			{Button: &ToolButton{label: "Arrow(A)", tool: ToolArrow, atype: actionDraw}},
+			{Button: &ToolButton{label: "Rect(X)", tool: ToolRect, atype: actionDraw}},
+			{Button: &ToolButton{label: "Num(H)", tool: ToolNumber, atype: actionDraw}},
+			{Button: &ToolButton{label: "Text(T)", tool: ToolText, atype: actionNone}},
+			{Button: &ToolButton{label: "Shadow($)", tool: ToolShadow, atype: actionNone}},
 		}
 		for _, cb := range toolButtons {
 			tb, ok := cb.Button.(*ToolButton)
