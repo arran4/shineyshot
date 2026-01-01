@@ -134,6 +134,7 @@ func (c *testVerificationCmd) Run() error {
 		AnnotationEnabled: cfg.AnnotationEnabled,
 		VersionLabel:      cfg.VersionLabel,
 		Theme:             c.root.activeTheme,
+		ToolButtons:       appstate.DefaultToolButtons(cfg.AnnotationEnabled),
 	}
 
 	if cfg.Message == "" {

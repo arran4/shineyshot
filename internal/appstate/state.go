@@ -8,7 +8,6 @@ import (
 	"github.com/example/shineyshot/internal/render"
 	"github.com/example/shineyshot/internal/theme"
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 	"image"
 	"image/draw"
@@ -357,25 +356,9 @@ func (a *AppState) Main(s screen.Screen) {
 	if a.Version != "" {
 		toolbarVersion = fmt.Sprintf("v%s", a.Version)
 	}
-	d := &font.Drawer{Face: basicfont.Face7x13}
-	max := d.MeasureString(ProgramTitle).Ceil() + 8 // padding
-	if icon := toolbarIconImage(); icon != nil {
-		max += icon.Bounds().Dx() + 4
-	}
-	if toolbarVersion != "" {
-		if w := d.MeasureString(toolbarVersion).Ceil() + 8; w > max {
-			max = w
-		}
-	}
-	toolLabels := []string{"Move(M)", "Crop(R)", "Draw(B)", "Circle(O)", "Line(L)", "Arrow(A)", "Rect(X)", "Num(H)", "Text(T)", "Shadow($)"}
-	for _, lbl := range toolLabels {
-		w := d.MeasureString(lbl).Ceil() + 8
-		if w > max {
-			max = w
-		}
-	}
-	if max > toolbarWidth {
-		toolbarWidth = max
+
+	if w := CalculateToolbarWidth(toolbarVersion); w > toolbarWidth {
+		toolbarWidth = w
 	}
 
 	width := rgba.Bounds().Dx() + toolbarWidth
@@ -814,6 +797,12 @@ func (a *AppState) Main(s screen.Screen) {
 				}
 			}
 			paintMu.Unlock()
+
+			currentButtons := make([]Button, len(toolButtons))
+			for i, tb := range toolButtons {
+				currentButtons[i] = tb
+			}
+
 			st := PaintState{
 				Width:             width,
 				Height:            height,
@@ -833,6 +822,7 @@ func (a *AppState) Main(s screen.Screen) {
 				HandleShortcut:    handleShortcut,
 				AnnotationEnabled: annotationEnabled,
 				VersionLabel:      toolbarVersion,
+				ToolButtons:       currentButtons,
 			}
 			select {
 			case paintCh <- st:
