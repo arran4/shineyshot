@@ -110,3 +110,7 @@ func (i *interactiveCmd) Template() string {
 func (v *versionCmd) Template() string {
 	return "version.txt"
 }
+
+func (c *configCmd) Template() string {
+	return "config.txt"
+}

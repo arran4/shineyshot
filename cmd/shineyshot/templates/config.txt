@@ -1,0 +1,8 @@
+Usage: {{.Program}} config [print|save]
+
+Manage configuration.
+
+Subcommands:
+  print         Print the current configuration to stdout
+  save          Save the current configuration to disk
+                Use -force to overwrite an existing file

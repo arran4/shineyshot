@@ -37,6 +37,59 @@ go install ./cmd/shineyshot
 
 The final command places the compiled binary in `$(go env GOBIN)` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) so it is available on your `PATH`.
 
+## Configuration
+
+ShineyShot supports a configuration file to persist your preferences. The configuration file follows a simple key-value format (RC style).
+
+### Location
+
+ShineyShot looks for a configuration file in the following order:
+1. **Dev Mode:** If running a "dev" build, it looks for `.shineyshotrc` in the current working directory.
+2. **XDG Config:** `~/.config/shineyshot/config.rc` (or `shineyshot.rc`).
+
+### Precedence
+
+Settings are applied in the following order of precedence (highest to lowest):
+1. **CLI Flags:** Explicit flags passed to the command (e.g., `-theme dark`).
+2. **Environment Variables:** e.g., `SHINEYSHOT_THEME`.
+3. **Configuration File:** Settings loaded from `config.rc`.
+4. **Defaults:** Hardcoded application defaults.
+
+### Management
+
+You can manage your configuration using the `config` subcommand:
+
+```bash
+# Print the current configuration (useful for inspecting loaded settings)
+shineyshot config print
+
+# Save the current configuration to disk
+shineyshot config save
+
+# Force overwrite an existing configuration file
+shineyshot config save -force
+```
+
+### File Format
+
+The configuration file supports global settings and sections for specific features like notifications and themes.
+
+```ini
+theme = dark
+save_dir = /home/user/Pictures/Screenshots
+
+[notify]
+capture = true
+save = true
+copy = false
+
+[theme.my_custom_theme]
+Name: My Custom Theme
+Background: #1E1E1E
+Foreground: #FFFFFF
+# ... other theme colors
+```
+
 ## UI Mode
 
 Launch the graphical editor from any environment and control how it starts up with command-line flags.
