@@ -709,6 +709,7 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 				Background: background,
 			})),
 			appstate.WithVersion(version),
+			appstate.WithTheme(i.r.activeTheme),
 		)
 		go st.Run()
 		i.writeln(i.stdout, "preview window opened")
@@ -749,6 +750,7 @@ func (i *interactiveCmd) handleShow(copyImage bool) {
 			Background: i.backgroundSession,
 		})),
 		appstate.WithVersion(version),
+		appstate.WithTheme(i.r.activeTheme),
 		appstate.WithSettingsListener(func(cIdx, wIdx int) {
 			i.mu.Lock()
 			i.colorIdx = cIdx

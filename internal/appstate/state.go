@@ -6,6 +6,7 @@ import (
 	"github.com/example/shineyshot/internal/capture"
 	"github.com/example/shineyshot/internal/clipboard"
 	"github.com/example/shineyshot/internal/render"
+	"github.com/example/shineyshot/internal/theme"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
@@ -41,6 +42,8 @@ type AppState struct {
 	ShadowDefaults       render.ShadowOptions
 	InitialShadowApplied bool
 	InitialShadowOffset  image.Point
+
+	CurrentTheme *theme.Theme
 
 	updateCh    chan struct{}
 	sendControl func(controlEvent)
@@ -118,6 +121,9 @@ func WithSettingsListener(fn func(colorIdx, widthIdx int)) Option {
 // WithOnClose registers a callback invoked when the window closes.
 func WithOnClose(fn func()) Option { return func(a *AppState) { a.onClose = fn } }
 
+// WithTheme sets the initial theme.
+func WithTheme(t *theme.Theme) Option { return func(a *AppState) { a.CurrentTheme = t } }
+
 // New creates an AppState with the provided options.
 func New(opts ...Option) *AppState {
 	a := &AppState{
@@ -129,6 +135,9 @@ func New(opts ...Option) *AppState {
 	}
 	for _, o := range opts {
 		o(a)
+	}
+	if a.CurrentTheme == nil {
+		a.CurrentTheme = theme.Default()
 	}
 	a.ColorIdx = clampColorIndex(a.ColorIdx)
 	a.WidthIdx = clampWidthIndex(a.WidthIdx)

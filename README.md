@@ -322,6 +322,44 @@ Notification text and titles can be customised with environment variables:
 
 Background sockets default to `XDG_RUNTIME_DIR/shineyshot` on Linux or `~/.shineyshot/sockets` everywhere else. Set `SHINEYSHOT_SOCKET_DIR` (or pass `-dir`) to point the daemon and helpers somewhere specific.
 
+## Themes
+
+ShineyShot supports switchable color themes. You can specify a theme using the `-theme` flag or the `SHINEYSHOT_THEME` environment variable.
+
+Supported themes:
+- `default` (Light theme)
+- `dark` (Dark mode)
+- `high_contrast` (High contrast mode)
+- `hotdog` (Red and Yellow theme)
+
+### Theme Gallery
+
+**Default (Light)**
+![Default Theme](verification_configs/default_theme_default.png)
+
+**Dark**
+![Dark Theme](verification_configs/default_theme_dark.png)
+
+**High Contrast**
+![High Contrast Theme](verification_configs/default_theme_high_contrast.png)
+
+**Hotdog**
+![Hotdog Theme](verification_configs/default_theme_hotdog.png)
+
+### Custom Themes
+
+You can load a custom theme by providing a path to a `.theme` file or placing it in `~/.config/shineyshot/themes/` (or `/usr/share/shineyshot/themes/`).
+
+Format:
+```
+Name: My Custom Theme
+Background: #1E1E1E
+Foreground: #FFFFFF
+ToolbarBackground: #252526
+...
+```
+
+See `internal/theme/defaults/` for examples of all available keys.
 
 ## Testing
 

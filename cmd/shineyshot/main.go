@@ -10,6 +10,7 @@ import (
 
 	"github.com/example/shineyshot/internal/appstate"
 	"github.com/example/shineyshot/internal/notify"
+	"github.com/example/shineyshot/internal/theme"
 )
 
 var (
@@ -28,6 +29,8 @@ type root struct {
 	captureAlerts bool
 	saveAlerts    bool
 	copyAlerts    bool
+	themeName     string
+	activeTheme   *theme.Theme
 }
 
 func (r *root) Program() string {
@@ -43,6 +46,8 @@ func (r *root) subcommand(name string) *root {
 		captureAlerts: r.captureAlerts,
 		saveAlerts:    r.saveAlerts,
 		copyAlerts:    r.copyAlerts,
+		themeName:     r.themeName,
+		activeTheme:   r.activeTheme,
 	}
 }
 
@@ -60,6 +65,7 @@ func newRoot() *root {
 	r.fs.BoolVar(&r.captureAlerts, "notify-capture", false, "show a desktop notification after capturing a screenshot")
 	r.fs.BoolVar(&r.saveAlerts, "notify-save", false, "show a desktop notification after saving an image")
 	r.fs.BoolVar(&r.copyAlerts, "notify-copy", false, "show a desktop notification after copying to the clipboard")
+	r.fs.StringVar(&r.themeName, "theme", "", "color theme to use (default, dark, high_contrast, hotdog)")
 	r.fs.Usage = usageFunc(r)
 	return r
 }
@@ -76,6 +82,32 @@ func (r *root) Run(args []string) error {
 		r.notifier.Enable(notify.EventSave, r.saveAlerts)
 		r.notifier.Enable(notify.EventCopy, r.copyAlerts)
 	}
+
+	// Load theme if specified via CLI, Env, or Config
+	// Prioritize CLI
+	themeName := r.themeName
+	if themeName == "" {
+		themeName = os.Getenv("SHINEYSHOT_THEME")
+	}
+	// TODO: Load from config file if we had a general config loader here.
+	// For now relying on Loader which checks Env/CLI logic if we passed it down,
+	// but here we just pass the name to Loader.Load().
+
+	loader := theme.NewLoader()
+	t, loadErr := loader.Load(themeName)
+	if loadErr != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to load theme '%s': %v. using default.\n", themeName, loadErr)
+		t = theme.Default()
+	}
+
+	// Inject theme into AppState options when creating state in subcommands
+	// Note: We need to modify how subcommands create state or pass it down.
+	// Currently subcommands create their own state or modify `r.state`.
+	// `r.state` seems to be nil initially.
+	// Most commands call `appstate.New(...)`. We need to ensure they use the loaded theme.
+	// We can store the theme in `root` and have subcommands use it.
+	r.activeTheme = t
+
 	cmdName := r.fs.Arg(0)
 	subArgs := r.fs.Args()[1:]
 
