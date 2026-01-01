@@ -1,0 +1,19 @@
+Name: High Contrast
+Background: #000000
+Foreground: #FFFFFF
+ToolbarBackground: #000000
+TabBackground: #000000
+TabActive: #FFFFFF
+TabHover: #808080
+TabText: #FFFFFF
+TabTextActive: #000000
+TabTextHover: #FFFFFF
+ButtonBackground: #000000
+ButtonBackgroundHover: #404040
+ButtonBackgroundPress: #FFFFFF
+ButtonText: #FFFFFF
+ButtonTextHover: #FFFFFF
+ButtonTextPress: #000000
+ButtonBorder: #FFFFFF
+CheckerLight: #000000
+CheckerDark: #404040

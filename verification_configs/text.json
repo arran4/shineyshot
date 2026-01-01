@@ -1,0 +1,23 @@
+{
+  "width": 800,
+  "height": 600,
+  "current_tab": 0,
+  "tool": 8,
+  "color_idx": 0,
+  "text_input_active": true,
+  "text_input": "Hello World",
+  "text_pos": [200, 200],
+  "annotation_enabled": true,
+  "version_label": "v1.0.0",
+  "tabs": [
+    {
+      "title": "Text",
+      "offset": [0, 0],
+      "zoom": 1.0,
+      "next_number": 1,
+      "width_idx": 2,
+      "image_color": [220, 220, 220, 255],
+      "image_size": [600, 400]
+    }
+  ]
+}
