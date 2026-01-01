@@ -814,6 +814,12 @@ func (a *AppState) Main(s screen.Screen) {
 				}
 			}
 			paintMu.Unlock()
+
+			currentButtons := make([]Button, len(toolButtons))
+			for i, tb := range toolButtons {
+				currentButtons[i] = tb
+			}
+
 			st := PaintState{
 				Width:             width,
 				Height:            height,
@@ -833,6 +839,7 @@ func (a *AppState) Main(s screen.Screen) {
 				HandleShortcut:    handleShortcut,
 				AnnotationEnabled: annotationEnabled,
 				VersionLabel:      toolbarVersion,
+				ToolButtons:       currentButtons,
 			}
 			select {
 			case paintCh <- st:
