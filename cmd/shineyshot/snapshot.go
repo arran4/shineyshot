@@ -48,7 +48,13 @@ func parseSnapshotCmd(args []string, r *root) (*snapshotCmd, error) {
 	s := &snapshotCmd{root: r, fs: fs}
 	fs.Usage = usageFunc(s)
 	defaults := render.DefaultShadowOptions()
-	fs.StringVar(&s.output, "output", "screenshot.png", "write the capture to this file path")
+
+	defaultOutput := "screenshot.png"
+	if r.config != nil && r.config.SaveDir != "" {
+		defaultOutput = filepath.Join(r.config.SaveDir, "screenshot.png")
+	}
+
+	fs.StringVar(&s.output, "output", defaultOutput, "write the capture to this file path")
 	fs.StringVar(&s.mode, "mode", "", "capture mode: screen, window, or region")
 	fs.StringVar(&s.display, "display", "", "target display selector for screen captures")
 	fs.StringVar(&s.window, "window", "", "target window selector for window captures")

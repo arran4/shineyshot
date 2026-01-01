@@ -9,14 +9,16 @@ import (
 	"strings"
 
 	"github.com/example/shineyshot/internal/appstate"
+	"github.com/example/shineyshot/internal/config"
 	"github.com/example/shineyshot/internal/notify"
 	"github.com/example/shineyshot/internal/theme"
 )
 
 var (
-	version = "dev"
-	commit  = ""
-	date    = ""
+	version            = "dev"
+	commit             = ""
+	date               = ""
+	configPathOverride = ""
 )
 
 type runnable interface{ Run() error }
@@ -26,6 +28,7 @@ type root struct {
 	program       string
 	state         *appstate.AppState
 	notifier      *notify.Notifier
+	config        *config.Config
 	captureAlerts bool
 	saveAlerts    bool
 	copyAlerts    bool
@@ -43,6 +46,7 @@ func (r *root) subcommand(name string) *root {
 		program:       program,
 		state:         r.state,
 		notifier:      r.notifier,
+		config:        r.config,
 		captureAlerts: r.captureAlerts,
 		saveAlerts:    r.saveAlerts,
 		copyAlerts:    r.copyAlerts,
@@ -57,15 +61,28 @@ func (r *root) FlagSet() *flag.FlagSet {
 
 func newRoot() *root {
 	prefs := notify.LoadPreferences()
+	loader := config.NewLoader(version, configPathOverride)
+	cfg, err := loader.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to load config: %v\n", err)
+		cfg = config.New()
+	}
+
 	r := &root{
 		fs:       flag.NewFlagSet("shineyshot", flag.ExitOnError),
 		program:  "shineyshot",
 		notifier: notify.New(prefs),
+		config:   cfg,
 	}
-	r.fs.BoolVar(&r.captureAlerts, "notify-capture", false, "show a desktop notification after capturing a screenshot")
-	r.fs.BoolVar(&r.saveAlerts, "notify-save", false, "show a desktop notification after saving an image")
-	r.fs.BoolVar(&r.copyAlerts, "notify-copy", false, "show a desktop notification after copying to the clipboard")
-	r.fs.StringVar(&r.themeName, "theme", "", "color theme to use (default, dark, high_contrast, hotdog)")
+	r.fs.BoolVar(&r.captureAlerts, "notify-capture", cfg.Notify.Capture, "show a desktop notification after capturing a screenshot")
+	r.fs.BoolVar(&r.saveAlerts, "notify-save", cfg.Notify.Save, "show a desktop notification after saving an image")
+	r.fs.BoolVar(&r.copyAlerts, "notify-copy", cfg.Notify.Copy, "show a desktop notification after copying to the clipboard")
+
+	defaultTheme := cfg.Theme
+	if defaultTheme == "" {
+		defaultTheme = os.Getenv("SHINEYSHOT_THEME")
+	}
+	r.fs.StringVar(&r.themeName, "theme", defaultTheme, "color theme to use (default, dark, high_contrast, hotdog)")
 	r.fs.Usage = usageFunc(r)
 	return r
 }
@@ -84,20 +101,21 @@ func (r *root) Run(args []string) error {
 	}
 
 	// Load theme if specified via CLI, Env, or Config
-	// Prioritize CLI
 	themeName := r.themeName
-	if themeName == "" {
-		themeName = os.Getenv("SHINEYSHOT_THEME")
-	}
-	// TODO: Load from config file if we had a general config loader here.
-	// For now relying on Loader which checks Env/CLI logic if we passed it down,
-	// but here we just pass the name to Loader.Load().
 
-	loader := theme.NewLoader()
-	t, loadErr := loader.Load(themeName)
-	if loadErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to load theme '%s': %v. using default.\n", themeName, loadErr)
-		t = theme.Default()
+	var t *theme.Theme
+	// 1. Check loaded themes from Config
+	if cfgTheme, ok := r.config.Themes[themeName]; ok {
+		t = cfgTheme
+	} else {
+		// 2. Fallback to standard theme loader (File / Embedded / System)
+		loader := theme.NewLoader()
+		var loadErr error
+		t, loadErr = loader.Load(themeName)
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to load theme '%s': %v. using default.\n", themeName, loadErr)
+			t = theme.Default()
+		}
 	}
 
 	// Inject theme into AppState options when creating state in subcommands
