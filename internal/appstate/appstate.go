@@ -786,7 +786,33 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	}
 }
 
+func ensureToolButtons(annotationEnabled bool) {
+	if annotationEnabled {
+		if len(toolButtons) == 0 || len(toolButtons) == 1 {
+			toolButtons = []*CacheButton{
+				{Button: &ToolButton{label: "Move(M)", tool: ToolMove, atype: actionMove}},
+				{Button: &ToolButton{label: "Crop(R)", tool: ToolCrop, atype: actionCrop}},
+				{Button: &ToolButton{label: "Draw(B)", tool: ToolDraw, atype: actionDraw}},
+				{Button: &ToolButton{label: "Circle(O)", tool: ToolCircle, atype: actionDraw}},
+				{Button: &ToolButton{label: "Line(L)", tool: ToolLine, atype: actionDraw}},
+				{Button: &ToolButton{label: "Arrow(A)", tool: ToolArrow, atype: actionDraw}},
+				{Button: &ToolButton{label: "Rect(X)", tool: ToolRect, atype: actionDraw}},
+				{Button: &ToolButton{label: "Num(H)", tool: ToolNumber, atype: actionDraw}},
+				{Button: &ToolButton{label: "Text(T)", tool: ToolText, atype: actionNone}},
+				{Button: &ToolButton{label: "Shadow($)", tool: ToolShadow, atype: actionNone}},
+			}
+		}
+	} else {
+		if len(toolButtons) != 1 {
+			toolButtons = []*CacheButton{
+				{Button: &ActionButton{label: "Annotate"}},
+			}
+		}
+	}
+}
+
 func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, annotationEnabled bool, shadowUsed bool, t *theme.Theme) {
+	ensureToolButtons(annotationEnabled)
 	y := tabHeight
 	for i, cb := range toolButtons {
 		r := image.Rect(0, y, toolbarWidth, y+24)
