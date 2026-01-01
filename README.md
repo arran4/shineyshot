@@ -335,16 +335,16 @@ Supported themes:
 ### Theme Gallery
 
 **Default (Light)**
-![Default Theme](verification_configs/default_theme_default.png)
+![Default Theme](docs/themes/default_theme_default.png)
 
 **Dark**
-![Dark Theme](verification_configs/default_theme_dark.png)
+![Dark Theme](docs/themes/default_theme_dark.png)
 
 **High Contrast**
-![High Contrast Theme](verification_configs/default_theme_high_contrast.png)
+![High Contrast Theme](docs/themes/default_theme_high_contrast.png)
 
 **Hotdog**
-![Hotdog Theme](verification_configs/default_theme_hotdog.png)
+![Hotdog Theme](docs/themes/default_theme_hotdog.png)
 
 ### Custom Themes
 

@@ -41,15 +41,6 @@ func parseTestCmd(args []string, r *root) (*testVerificationCmd, error) {
 	c.fs = flag.NewFlagSet("test verification", flag.ExitOnError)
 	c.fs.StringVar(&c.input, "input", "", "input configuration file (JSON)")
 	c.fs.StringVar(&c.output, "output", "", "output PNG file")
-	// Also parse -theme here if passed, though strictly root flags are parsed before subcommand flags.
-	// The test harness in bash passes -theme after the subcommand `test verification`.
-	// Root flags need to be before subcommand. `shineyshot -theme=dark test verification ...`
-	// However, the prompt implies "allow switchability using command line".
-	// The current bash command provided in previous step put -theme at the end.
-	// Since `test verification` defines its own flagset, it complains about unknown flag.
-	// I should update the bash command to put -theme before `test` OR add -theme to `test verification` flags (which seems wrong).
-	// Standard Go flag parsing requires root flags before subcommand.
-	// I will update the bash command in my next step.
 	if err := c.fs.Parse(fs.Args()[1:]); err != nil {
 		return nil, err
 	}
