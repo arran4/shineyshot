@@ -156,6 +156,8 @@ func (r *root) Run(args []string) error {
 		cmd, err = parseWidthsCmd(subArgs, r)
 	case "test":
 		cmd, err = parseTestCmd(subArgs, r)
+	case "config":
+		cmd, err = parseConfigCmd(subArgs, r)
 	case "version":
 		cmd = &versionCmd{r: r}
 	default:

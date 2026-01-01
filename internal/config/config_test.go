@@ -52,3 +52,54 @@ Foreground = #FFFFFF
 		t.Errorf("Unexpected Background color: %+v", theme.Background)
 	}
 }
+
+func TestCircular(t *testing.T) {
+	input := `theme = dark
+save_dir = /home/user/shots
+
+[notify]
+capture = true
+save = true
+copy = false
+
+[theme.custom]
+Name = custom
+Background = #000000
+Foreground = #FFFFFF
+`
+	// 1. Parse initial input
+	cfg, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Initial parse failed: %v", err)
+	}
+
+	// 2. Generate string representation
+	generated := cfg.String()
+
+	// 3. Parse generated string
+	cfg2, err := Parse(strings.NewReader(generated))
+	if err != nil {
+		t.Fatalf("Circular parse failed: %v", err)
+	}
+
+	// 4. Compare relevant fields
+	if cfg.Theme != cfg2.Theme {
+		t.Errorf("Theme mismatch: %q vs %q", cfg.Theme, cfg2.Theme)
+	}
+	if cfg.SaveDir != cfg2.SaveDir {
+		t.Errorf("SaveDir mismatch: %q vs %q", cfg.SaveDir, cfg2.SaveDir)
+	}
+	if cfg.Notify != cfg2.Notify {
+		t.Errorf("Notify mismatch: %+v vs %+v", cfg.Notify, cfg2.Notify)
+	}
+
+	// Check theme persistence
+	t1 := cfg.Themes["custom"]
+	t2 := cfg2.Themes["custom"]
+	if t1 == nil || t2 == nil {
+		t.Fatalf("Custom theme missing in one config")
+	}
+	if t1.Background != t2.Background {
+		t.Errorf("Theme background mismatch: %v vs %v", t1.Background, t2.Background)
+	}
+}
