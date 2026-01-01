@@ -33,6 +33,30 @@ const ProgramTitle = "ShineyShot"
 
 var toolbarWidth = 48
 
+func CalculateToolbarWidth(versionLabel string) int {
+	d := &font.Drawer{Face: basicfont.Face7x13}
+	max := d.MeasureString(ProgramTitle).Ceil() + 8 // padding
+	if icon := toolbarIconImage(); icon != nil {
+		max += icon.Bounds().Dx() + 4
+	}
+	if versionLabel != "" {
+		if w := d.MeasureString(versionLabel).Ceil() + 8; w > max {
+			max = w
+		}
+	}
+	toolLabels := []string{"Move(M)", "Crop(R)", "Draw(B)", "Circle(O)", "Line(L)", "Arrow(A)", "Rect(X)", "Num(H)", "Text(T)", "Shadow($)"}
+	for _, lbl := range toolLabels {
+		w := d.MeasureString(lbl).Ceil() + 8
+		if w > max {
+			max = w
+		}
+	}
+	if max < 48 {
+		return 48
+	}
+	return max
+}
+
 var (
 	toolbarIconOnce sync.Once
 	toolbarIcon     image.Image
@@ -1245,6 +1269,10 @@ func DrawScene(ctx context.Context, b *image.RGBA, st PaintState) {
 	if t == nil {
 		t = theme.Default()
 	}
+
+	// Ensure toolbar width is correct for the current state
+	toolbarWidth = CalculateToolbarWidth(st.VersionLabel)
+
 	drawBackdrop(b, t)
 	if ctx != nil && ctx.Err() != nil {
 		return

@@ -22,6 +22,14 @@ Usage:
 shineyshot test verification -input config.json -output screenshot.png
 ```
 
+To generate screenshots using a specific theme:
+
+```
+shineyshot -theme dark test verification -input config.json -output screenshot_dark.png
+```
+
+Supported themes: `default`, `dark`, `high_contrast`, `hotdog`.
+
 The configuration file is a JSON object defining the application state. Example:
 
 ```json
