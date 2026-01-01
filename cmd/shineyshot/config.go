@@ -35,7 +35,10 @@ func (c *configCmd) Run() error {
 	case "print":
 		return c.runPrint()
 	case "save":
-		return c.runSave()
+		// parse flags for save subcommand
+		// we need to shift the args to skip "save"
+		saveArgs := args[1:]
+		return c.runSave(saveArgs)
 	default:
 		return fmt.Errorf("unknown config command: %s", subCmd)
 	}
@@ -47,7 +50,13 @@ func (c *configCmd) runPrint() error {
 	return nil
 }
 
-func (c *configCmd) runSave() error {
+func (c *configCmd) runSave(args []string) error {
+	fs := flag.NewFlagSet("config save", flag.ExitOnError)
+	force := fs.Bool("force", false, "overwrite existing configuration file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
 	cfg := c.root.config
 	path := ""
 
@@ -62,6 +71,11 @@ func (c *configCmd) runSave() error {
 		if err != nil {
 			return fmt.Errorf("failed to determine default config path: %w", err)
 		}
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(path); err == nil && !*force {
+		return fmt.Errorf("config file already exists at %s; use -force to overwrite", path)
 	}
 
 	// Ensure directory exists
