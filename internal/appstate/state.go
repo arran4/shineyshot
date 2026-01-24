@@ -3,6 +3,7 @@ package appstate
 import (
 	"context"
 	"fmt"
+
 	"github.com/example/shineyshot/internal/capture"
 	"github.com/example/shineyshot/internal/clipboard"
 	"github.com/example/shineyshot/internal/render"
@@ -837,148 +838,85 @@ func (a *AppState) Main(s screen.Screen) {
 				w.Send(paint.Event{})
 				continue
 			}
-			if int(e.Y) >= height-bottomHeight {
-				p := image.Point{int(e.X), int(e.Y)}
-				hoverShortcut = -1
-				for i, sc := range shortcutRects {
-					if p.In(sc.rect) {
-						hoverShortcut = i
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							sc.Activate()
-						}
-						break
-					}
+			uiMapMu.RLock()
+			var hit *UIShape
+			if uiMap != nil {
+				s := uiMap.GetAt(int(e.X), int(e.Y))
+				if s != nil {
+					hit, _ = s.(*UIShape)
 				}
-				if e.Direction == mouse.DirNone {
-					w.Send(paint.Event{})
-				}
-				continue
 			}
-			if int(e.Y) < tabHeight {
-				hoverTab = -1
-				p := image.Point{int(e.X), int(e.Y)}
-				for i, tb := range tabButtons {
-					if p.In(tb.rect) {
-						hoverTab = i
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							current = i
-							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
-							w.Send(paint.Event{})
-						}
-						break
-					}
-				}
-				if e.Direction == mouse.DirNone {
-					w.Send(paint.Event{})
-				}
-				continue
-			}
+			uiMapMu.RUnlock()
 
-			if int(e.X) < toolbarWidth && int(e.Y) >= tabHeight {
-				pos := int(e.Y) - tabHeight
-				idx := pos / 24
-				if idx < len(toolButtons) {
+			if hit != nil {
+				hoverTab = -1
+				hoverShortcut = -1
+				hoverTool = -1
+				hoverPalette = -1
+				hoverWidth = -1
+				hoverNumber = -1
+				hoverTextSize = -1
+
+				switch hit.Type {
+				case UITypeShortcut:
+					hoverShortcut = hit.Index
 					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-						toolButtons[idx].Activate()
+						if hit.Index >= 0 && hit.Index < len(shortcutRects) {
+							shortcutRects[hit.Index].Activate()
+						}
+					}
+				case UITypeTab:
+					hoverTab = hit.Index
+					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+						current = hit.Index
+						a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 						w.Send(paint.Event{})
 					}
-					hoverTool = idx
-					if e.Direction == mouse.DirNone {
+				case UITypeTool:
+					hoverTool = hit.Index
+					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+						if hit.Index >= 0 && hit.Index < len(toolButtons) {
+							toolButtons[hit.Index].Activate()
+							w.Send(paint.Event{})
+						}
+					}
+				case UITypePalette:
+					hoverPalette = hit.Index
+					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+						colorIdx = hit.Index
+						col = paletteColorAt(colorIdx)
+						a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 						w.Send(paint.Event{})
 					}
-					continue
-				}
-				if !annotationEnabled {
-					hoverTool = -1
-					hoverPalette = -1
-					hoverWidth = -1
-					hoverNumber = -1
-					hoverTextSize = -1
-					if e.Direction == mouse.DirNone {
+				case UITypeWidth:
+					hoverWidth = hit.Index
+					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+						tabs[current].WidthIdx = hit.Index
+						a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
 						w.Send(paint.Event{})
 					}
-					continue
-				}
-				pos -= len(toolButtons) * 24
-				pos -= 4
-				paletteCols := toolbarWidth / 18
-				rows := (paletteLen() + paletteCols - 1) / paletteCols
-				paletteHeight := rows * 18
-				if pos >= 0 && pos < paletteHeight {
-					colX := (int(e.X) - 4) / 18
-					colY := pos / 18
-					cidx := colY*paletteCols + colX
-					if cidx >= 0 && cidx < paletteLen() {
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							colorIdx = cidx
-							col = paletteColorAt(colorIdx)
-							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
-						}
-						hoverPalette = cidx
-						if e.Direction == mouse.DirNone {
-							w.Send(paint.Event{})
-						}
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							w.Send(paint.Event{})
-						}
-						continue
+				case UITypeNumber:
+					hoverNumber = hit.Index
+					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+						numberIdx = hit.Index
+						w.Send(paint.Event{})
+					}
+				case UITypeTextSize:
+					hoverTextSize = hit.Index
+					if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
+						textSizeIdx = hit.Index
+						w.Send(paint.Event{})
 					}
 				}
-				pos -= paletteHeight
-				pos -= 4
-				if (tool == ToolDraw || tool == ToolCircle || tool == ToolLine || tool == ToolArrow || tool == ToolRect) && pos >= 0 {
-					widx := pos / 16
-					if widx >= 0 && widx < widthsLen() {
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							tabs[current].WidthIdx = widx
-							a.applySettingsFromUI(colorIdx, tabs[current].WidthIdx)
-						}
-						hoverWidth = widx
-						if e.Direction == mouse.DirNone {
-							w.Send(paint.Event{})
-						}
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							w.Send(paint.Event{})
-						}
-						continue
-					}
-				} else if tool == ToolNumber && pos >= 0 {
-					rem := pos
-					for i, s := range numberSizes {
-						h := numberBoxHeight(s)
-						if rem < h {
-							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-								numberIdx = i
-							}
-							hoverNumber = i
-							if e.Direction == mouse.DirNone {
-								w.Send(paint.Event{})
-							}
-							if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-								w.Send(paint.Event{})
-							}
-							break
-						}
-						rem -= h
-					}
-					continue
-				} else if tool == ToolText && pos >= 0 {
-					idx := pos / 24
-					if idx >= 0 && idx < len(textFaces) {
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							textSizeIdx = idx
-						}
-						hoverTextSize = idx
-						if e.Direction == mouse.DirNone {
-							w.Send(paint.Event{})
-						}
-						if e.Button == mouse.ButtonLeft && e.Direction == mouse.DirPress {
-							w.Send(paint.Event{})
-						}
-						continue
-					}
-				}
+
 				if e.Direction == mouse.DirNone {
+					w.Send(paint.Event{})
+				}
+				continue
+			} else {
+				if hoverTab != -1 || hoverShortcut != -1 || hoverTool != -1 || hoverPalette != -1 || hoverWidth != -1 || hoverNumber != -1 || hoverTextSize != -1 {
+					hoverTab = -1
+					hoverShortcut = -1
 					hoverTool = -1
 					hoverPalette = -1
 					hoverWidth = -1

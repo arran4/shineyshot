@@ -3,6 +3,7 @@ module github.com/example/shineyshot
 go 1.24.3
 
 require (
+	github.com/arran4/spacemap v0.0.3
 	github.com/godbus/dbus/v5 v5.1.0
 	github.com/jezek/xgb v1.1.1
 	golang.org/x/exp/shiny v0.0.0-20250718183923-645b1fa84792
