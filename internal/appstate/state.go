@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/arran4/spacemap"
 	"github.com/example/shineyshot/internal/capture"
 	"github.com/example/shineyshot/internal/clipboard"
 	"github.com/example/shineyshot/internal/render"
@@ -44,6 +45,9 @@ type AppState struct {
 	InitialShadowOffset  image.Point
 
 	CurrentTheme *theme.Theme
+
+	uiMap   spacemap.Interface
+	uiMapMu sync.RWMutex
 
 	updateCh    chan struct{}
 	sendControl func(controlEvent)
@@ -824,6 +828,11 @@ func (a *AppState) Main(s screen.Screen) {
 				AnnotationEnabled: annotationEnabled,
 				VersionLabel:      toolbarVersion,
 				ToolButtons:       currentButtons,
+				SetUIMap: func(sm spacemap.Interface) {
+					a.uiMapMu.Lock()
+					a.uiMap = sm
+					a.uiMapMu.Unlock()
+				},
 			}
 			select {
 			case paintCh <- st:
@@ -838,15 +847,15 @@ func (a *AppState) Main(s screen.Screen) {
 				w.Send(paint.Event{})
 				continue
 			}
-			uiMapMu.RLock()
+			a.uiMapMu.RLock()
 			var hit *UIShape
-			if uiMap != nil {
-				s := uiMap.GetAt(int(e.X), int(e.Y))
+			if a.uiMap != nil {
+				s := a.uiMap.GetAt(int(e.X), int(e.Y))
 				if s != nil {
 					hit, _ = s.(*UIShape)
 				}
 			}
-			uiMapMu.RUnlock()
+			a.uiMapMu.RUnlock()
 
 			if hit != nil {
 				hoverTab = -1

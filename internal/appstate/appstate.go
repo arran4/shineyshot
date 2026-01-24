@@ -184,11 +184,6 @@ func (u *UIShape) String() string {
 	return fmt.Sprintf("UI:%v:%d", u.Type, u.Index)
 }
 
-var (
-	uiMap   spacemap.Interface
-	uiMapMu sync.RWMutex
-)
-
 type PaletteColor struct {
 	Name  string
 	Color color.RGBA
@@ -401,12 +396,6 @@ func EnsureWidth(width int) int {
 	return 0
 }
 
-func paletteLen() int {
-	paletteMu.RLock()
-	defer paletteMu.RUnlock()
-	return len(palette)
-}
-
 func paletteColorAt(idx int) color.RGBA {
 	paletteMu.RLock()
 	defer paletteMu.RUnlock()
@@ -435,12 +424,6 @@ func clampColorIndex(idx int) int {
 		return len(palette) - 1
 	}
 	return idx
-}
-
-func widthsLen() int {
-	widthsMu.RLock()
-	defer widthsMu.RUnlock()
-	return len(widths)
 }
 
 func widthAt(idx int) int {
@@ -1297,6 +1280,7 @@ type PaintState struct {
 	VersionLabel      string
 	Theme             *theme.Theme
 	ToolButtons       []Button
+	SetUIMap          func(spacemap.Interface)
 }
 
 func DefaultToolButtons(annotationEnabled bool) []Button {
@@ -1378,9 +1362,9 @@ func DrawScene(ctx context.Context, b *image.RGBA, st PaintState) {
 	drawToolbar(b, st.Tool, st.ColorIdx, st.Tabs[st.Current].WidthIdx, st.NumberIdx, st.AnnotationEnabled, st.Tabs[st.Current].ShadowApplied, st.ToolButtons, t, sm)
 	drawShortcuts(b, st.Width, st.Height, st.Tool, st.TextInputActive, zoom, st.HandleShortcut, st.AnnotationEnabled, st.VersionLabel, t, sm)
 
-	uiMapMu.Lock()
-	uiMap = sm
-	uiMapMu.Unlock()
+	if st.SetUIMap != nil {
+		st.SetUIMap(sm)
+	}
 
 	if ctx != nil && ctx.Err() != nil {
 		return
