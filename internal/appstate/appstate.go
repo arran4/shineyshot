@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/arran4/spacemap"
+	"github.com/arran4/spacemap/simplearray"
 	"github.com/example/shineyshot/assets"
 	"github.com/example/shineyshot/internal/theme"
 	"golang.org/x/exp/shiny/screen"
@@ -151,6 +153,36 @@ const (
 	actionCrop
 	actionDraw
 )
+
+type UIType int
+
+const (
+	UITypeTab UIType = iota
+	UITypeTool
+	UITypePalette
+	UITypeWidth
+	UITypeNumber
+	UITypeTextSize
+	UITypeShortcut
+)
+
+type UIShape struct {
+	Rect  image.Rectangle
+	Type  UIType
+	Index int
+}
+
+func (u *UIShape) PointIn(x, y int) bool {
+	return image.Pt(x, y).In(u.Rect)
+}
+
+func (u *UIShape) Bounds() image.Rectangle {
+	return u.Rect
+}
+
+func (u *UIShape) String() string {
+	return fmt.Sprintf("UI:%v:%d", u.Type, u.Index)
+}
 
 type PaletteColor struct {
 	Name  string
@@ -364,12 +396,6 @@ func EnsureWidth(width int) int {
 	return 0
 }
 
-func paletteLen() int {
-	paletteMu.RLock()
-	defer paletteMu.RUnlock()
-	return len(palette)
-}
-
 func paletteColorAt(idx int) color.RGBA {
 	paletteMu.RLock()
 	defer paletteMu.RUnlock()
@@ -398,12 +424,6 @@ func clampColorIndex(idx int) int {
 		return len(palette) - 1
 	}
 	return idx
-}
-
-func widthsLen() int {
-	widthsMu.RLock()
-	defer widthsMu.RUnlock()
-	return len(widths)
 }
 
 func widthAt(idx int) int {
@@ -704,7 +724,7 @@ func numberBoxHeight(size int) int {
 	return h
 }
 
-func drawTabs(dst *image.RGBA, tabs []Tab, current int, t *theme.Theme) {
+func drawTabs(dst *image.RGBA, tabs []Tab, current int, t *theme.Theme, sm spacemap.Interface) {
 	// background for title area
 	draw.Draw(dst, image.Rect(0, 0, toolbarWidth, tabHeight),
 		&image.Uniform{t.ToolbarBackground}, image.Point{}, draw.Src)
@@ -732,6 +752,9 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int, t *theme.Theme) {
 	for i, t2 := range tabs {
 		tb := TabButton{label: t2.Title, onSelect: nil}
 		tb.SetRect(image.Rect(x, 0, x+80, tabHeight))
+		if sm != nil {
+			sm.Add(&UIShape{Rect: tb.Rect(), Type: UITypeTab, Index: i}, 0)
+		}
 		state := StateDefault
 		switch i {
 		case current:
@@ -748,7 +771,7 @@ func drawTabs(dst *image.RGBA, tabs []Tab, current int, t *theme.Theme) {
 		&image.Uniform{t.ToolbarBackground}, image.Point{}, draw.Src)
 }
 
-func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string), annotationEnabled bool, versionLabel string, t *theme.Theme) {
+func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool, z float64, trigger func(string), annotationEnabled bool, versionLabel string, t *theme.Theme, sm spacemap.Interface) {
 	rect := image.Rect(0, height-bottomHeight, width, height)
 	draw.Draw(dst, rect, &image.Uniform{t.ToolbarBackground}, image.Point{}, draw.Src)
 	shortcutRects = shortcutRects[:0]
@@ -800,6 +823,9 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 		sc := &shortcuts[i]
 		w := meas.MeasureString(sc.label).Ceil()
 		sc.SetRect(image.Rect(x-2, y-14, x+w+2, y+4))
+		if sm != nil {
+			sm.Add(&UIShape{Rect: sc.Rect(), Type: UITypeShortcut, Index: i}, 0)
+		}
 		state := StateDefault
 		if i == hoverShortcut {
 			state = StateHover
@@ -810,11 +836,14 @@ func drawShortcuts(dst *image.RGBA, width, height int, tool Tool, textMode bool,
 	}
 }
 
-func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, annotationEnabled bool, shadowUsed bool, buttons []Button, t *theme.Theme) {
+func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, annotationEnabled bool, shadowUsed bool, buttons []Button, t *theme.Theme, sm spacemap.Interface) {
 	y := tabHeight
 	for i, cb := range buttons {
 		r := image.Rect(0, y, toolbarWidth, y+24)
 		cb.SetRect(r)
+		if sm != nil {
+			sm.Add(&UIShape{Rect: cb.Rect(), Type: UITypeTool, Index: i}, 0)
+		}
 		state := StateDefault
 
 		var inner Button = cb
@@ -850,6 +879,9 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, an
 	paletteRects = paletteRects[:0]
 	for i, p := range palette {
 		rect := image.Rect(x, y, x+16, y+16)
+		if sm != nil {
+			sm.Add(&UIShape{Rect: rect, Type: UITypePalette, Index: i}, 0)
+		}
 		draw.Draw(dst, rect, &image.Uniform{p}, image.Point{}, draw.Src)
 		if i == hoverPalette {
 			draw.Draw(dst, rect, &image.Uniform{color.RGBA{255, 255, 255, 80}}, image.Point{}, draw.Over)
@@ -875,6 +907,9 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, an
 		widthRects = widthRects[:0]
 		for i, w := range widths {
 			rect := image.Rect(0, y, toolbarWidth, y+16)
+			if sm != nil {
+				sm.Add(&UIShape{Rect: rect, Type: UITypeWidth, Index: i}, 0)
+			}
 			c := t.ButtonBackground
 			switch i {
 			case widthIdx:
@@ -898,6 +933,9 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, an
 		for i, s := range numberSizes {
 			h := numberBoxHeight(s)
 			rect := image.Rect(0, y, toolbarWidth, y+h)
+			if sm != nil {
+				sm.Add(&UIShape{Rect: rect, Type: UITypeNumber, Index: i}, 0)
+			}
 			c := t.ButtonBackground
 			switch i {
 			case numberIdx:
@@ -919,6 +957,9 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, an
 		textSizeRects = textSizeRects[:0]
 		for i, face := range textFaces {
 			rect := image.Rect(0, y, toolbarWidth, y+24)
+			if sm != nil {
+				sm.Add(&UIShape{Rect: rect, Type: UITypeTextSize, Index: i}, 0)
+			}
 			c := t.ButtonBackground
 			switch i {
 			case textSizeIdx:
@@ -1239,6 +1280,7 @@ type PaintState struct {
 	VersionLabel      string
 	Theme             *theme.Theme
 	ToolButtons       []Button
+	SetUIMap          func(spacemap.Interface)
 }
 
 func DefaultToolButtons(annotationEnabled bool) []Button {
@@ -1265,6 +1307,8 @@ func DefaultToolButtons(annotationEnabled bool) []Button {
 }
 
 func DrawScene(ctx context.Context, b *image.RGBA, st PaintState) {
+	sm := simplearray.New()
+
 	t := st.Theme
 	if t == nil {
 		t = theme.Default()
@@ -1314,9 +1358,13 @@ func DrawScene(ctx context.Context, b *image.RGBA, st PaintState) {
 		return
 	}
 
-	drawTabs(b, st.Tabs, st.Current, t)
-	drawToolbar(b, st.Tool, st.ColorIdx, st.Tabs[st.Current].WidthIdx, st.NumberIdx, st.AnnotationEnabled, st.Tabs[st.Current].ShadowApplied, st.ToolButtons, t)
-	drawShortcuts(b, st.Width, st.Height, st.Tool, st.TextInputActive, zoom, st.HandleShortcut, st.AnnotationEnabled, st.VersionLabel, t)
+	drawTabs(b, st.Tabs, st.Current, t, sm)
+	drawToolbar(b, st.Tool, st.ColorIdx, st.Tabs[st.Current].WidthIdx, st.NumberIdx, st.AnnotationEnabled, st.Tabs[st.Current].ShadowApplied, st.ToolButtons, t, sm)
+	drawShortcuts(b, st.Width, st.Height, st.Tool, st.TextInputActive, zoom, st.HandleShortcut, st.AnnotationEnabled, st.VersionLabel, t, sm)
+
+	if st.SetUIMap != nil {
+		st.SetUIMap(sm)
+	}
 
 	if ctx != nil && ctx.Err() != nil {
 		return
