@@ -19,12 +19,12 @@ func TestApplyShadowBoundsGrowth(t *testing.T) {
 	if res.Image == nil {
 		t.Fatalf("expected image result")
 	}
-	wantBounds := image.Rect(0, 0, 18, 18)
+	wantBounds := image.Rect(0, 0, 20, 18)
 	if res.Image.Bounds() != wantBounds {
 		t.Fatalf("bounds mismatch: got %v want %v", res.Image.Bounds(), wantBounds)
 	}
-	if res.Offset != image.Pt(4, 4) {
-		t.Fatalf("offset mismatch: got %v want %v", res.Offset, image.Pt(4, 4))
+	if res.Offset != image.Pt(0, 1) {
+		t.Fatalf("offset mismatch: got %v want %v", res.Offset, image.Pt(0, 1))
 	}
 }
 
@@ -51,5 +51,23 @@ func TestApplyShadowBlurSpread(t *testing.T) {
 	}
 	if alpha := res.Image.RGBAAt(4, 2).A; alpha == 0 {
 		t.Fatalf("expected blur to spread alpha, got 0 at (4,2)")
+	}
+}
+
+func TestApplyShadowUsesConfiguredOffset(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.SetRGBA(0, 0, color.RGBA{255, 255, 255, 255})
+
+	opts := ShadowOptions{Radius: 0, Offset: image.Pt(2, 1), Opacity: 1}
+	res := ApplyShadow(img, opts)
+
+	if res.Image == nil {
+		t.Fatalf("expected image result")
+	}
+	if got, want := res.Image.Bounds(), image.Rect(0, 0, 3, 2); got != want {
+		t.Fatalf("bounds mismatch: got %v want %v", got, want)
+	}
+	if shadowPixel := res.Image.RGBAAt(2, 1); shadowPixel.A == 0 {
+		t.Fatalf("expected translated shadow alpha at (2,1)")
 	}
 }

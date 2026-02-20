@@ -63,16 +63,19 @@ func ApplyShadow(img *image.RGBA, opts ShadowOptions) ShadowResult {
 		paddedBounds = paddedBounds.Inset(-radius)
 	}
 
-	dstRect := paddedBounds.Sub(paddedBounds.Min)
+	shadowBounds := paddedBounds.Add(opts.Offset)
+	compositeBounds := srcBounds.Union(shadowBounds)
+	dstRect := compositeBounds.Sub(compositeBounds.Min)
 	width := dstRect.Dx()
 	height := dstRect.Dy()
 	if width <= 0 || height <= 0 {
 		return ShadowResult{Image: img}
 	}
 
-	shift := srcBounds.Min.Sub(paddedBounds.Min)
+	shift := srcBounds.Min.Sub(compositeBounds.Min)
+	shadowOrigin := shadowBounds.Min.Sub(compositeBounds.Min)
 
-	mask := image.NewGray(dstRect)
+	mask := image.NewGray(paddedBounds.Sub(paddedBounds.Min))
 	for y := srcBounds.Min.Y; y < srcBounds.Max.Y; y++ {
 		for x := srcBounds.Min.X; x < srcBounds.Max.X; x++ {
 			a := img.RGBAAt(x, y).A
@@ -91,9 +94,9 @@ func ApplyShadow(img *image.RGBA, opts ShadowOptions) ShadowResult {
 	draw.Draw(dst, dst.Bounds(), image.Transparent, image.Point{}, draw.Src)
 	shadowAlpha := uint8(opacity*255 + 0.5)
 	if shadowAlpha > 0 {
-		draw.DrawMask(dst, blurred.Bounds(), image.NewUniform(color.RGBA{0, 0, 0, shadowAlpha}), image.Point{}, blurred, blurred.Bounds().Min, draw.Over)
+		draw.DrawMask(dst, blurred.Bounds().Add(shadowOrigin), image.NewUniform(color.RGBA{0, 0, 0, shadowAlpha}), image.Point{}, blurred, blurred.Bounds().Min, draw.Over)
 	}
-	draw.Draw(dst, srcBounds.Sub(paddedBounds.Min), img, srcBounds.Min, draw.Over)
+	draw.Draw(dst, srcBounds.Sub(compositeBounds.Min), img, srcBounds.Min, draw.Over)
 
 	return ShadowResult{Image: dst, Offset: shift}
 }
