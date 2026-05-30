@@ -7,7 +7,7 @@ import (
 	"image"
 )
 
-func portalScreenshot(interactive bool, _ CaptureOptions) (*image.RGBA, error) {
+func portalScreenshot(interactive bool, _ Options) (*image.RGBA, error) {
 	return nil, fmt.Errorf("portal screenshot is not supported on this platform")
 }
 

@@ -622,7 +622,7 @@ func (a *AppState) Main(s screen.Screen) {
 		})
 
 		register("capture", shortcutList{{Rune: 'n', Modifiers: key.ModControl}}, func() {
-			img, err := capture.CaptureScreenshot("", capture.CaptureOptions{})
+			img, err := capture.Screenshot("", capture.Options{})
 			if err != nil {
 				errorToast("capture failed: %v", err)
 				return
@@ -922,20 +922,19 @@ func (a *AppState) Main(s screen.Screen) {
 					w.Send(paint.Event{})
 				}
 				continue
-			} else {
-				if hoverTab != -1 || hoverShortcut != -1 || hoverTool != -1 || hoverPalette != -1 || hoverWidth != -1 || hoverNumber != -1 || hoverTextSize != -1 {
-					hoverTab = -1
-					hoverShortcut = -1
-					hoverTool = -1
-					hoverPalette = -1
-					hoverWidth = -1
-					hoverNumber = -1
-					hoverTextSize = -1
-					w.Send(paint.Event{})
-				}
+			}
+			if hoverTab != -1 || hoverShortcut != -1 || hoverTool != -1 || hoverPalette != -1 || hoverWidth != -1 || hoverNumber != -1 || hoverTextSize != -1 {
+				hoverTab = -1
+				hoverShortcut = -1
+				hoverTool = -1
+				hoverPalette = -1
+				hoverWidth = -1
+				hoverNumber = -1
+				hoverTextSize = -1
+				w.Send(paint.Event{})
 			}
 
-			baseRect := imageRect(tabs[current].Image, width, height, tabs[current].Zoom)
+			baseRect := imageRect(tabs[current].Image, height, tabs[current].Zoom)
 
 			mx := int((float64(e.X)-float64(baseRect.Min.X))/tabs[current].Zoom) - tabs[current].Offset.X
 			my := int((float64(e.Y)-float64(baseRect.Min.Y))/tabs[current].Zoom) - tabs[current].Offset.Y

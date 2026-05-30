@@ -37,26 +37,26 @@ var toolbarWidth = 48
 
 func CalculateToolbarWidth(versionLabel string) int {
 	d := &font.Drawer{Face: basicfont.Face7x13}
-	max := d.MeasureString(ProgramTitle).Ceil() + 8 // padding
+	maxWidth := d.MeasureString(ProgramTitle).Ceil() + 8 // padding
 	if icon := toolbarIconImage(); icon != nil {
-		max += icon.Bounds().Dx() + 4
+		maxWidth += icon.Bounds().Dx() + 4
 	}
 	if versionLabel != "" {
-		if w := d.MeasureString(versionLabel).Ceil() + 8; w > max {
-			max = w
+		if w := d.MeasureString(versionLabel).Ceil() + 8; w > maxWidth {
+			maxWidth = w
 		}
 	}
 	toolLabels := []string{"Move(M)", "Crop(R)", "Draw(B)", "Circle(O)", "Line(L)", "Arrow(A)", "Rect(X)", "Num(H)", "Text(T)", "Shadow($)"}
 	for _, lbl := range toolLabels {
 		w := d.MeasureString(lbl).Ceil() + 8
-		if w > max {
-			max = w
+		if w > maxWidth {
+			maxWidth = w
 		}
 	}
-	if max < 48 {
+	if maxWidth < 48 {
 		return 48
 	}
-	return max
+	return maxWidth
 }
 
 var (
@@ -281,7 +281,7 @@ func toolbarIconImage() image.Image {
 // imageRect returns the destination rectangle for drawing the image. It anchors
 // the canvas origin just below the toolbar instead of centering it so that the
 // image position remains stable even when the canvas grows or shrinks.
-func imageRect(img *image.RGBA, winW, winH int, zoom float64) image.Rectangle {
+func imageRect(img *image.RGBA, _ int, zoom float64) image.Rectangle {
 	w := int(float64(img.Bounds().Dx()) * zoom)
 	h := int(float64(img.Bounds().Dy()) * zoom)
 	x0 := toolbarWidth
@@ -846,7 +846,7 @@ func drawToolbar(dst *image.RGBA, tool Tool, colIdx, widthIdx, numberIdx int, an
 		}
 		state := StateDefault
 
-		var inner Button = cb
+		inner := cb
 		if cache, ok := cb.(*CacheButton); ok {
 			inner = cache.Button
 		}
@@ -1324,7 +1324,7 @@ func DrawScene(ctx context.Context, b *image.RGBA, st PaintState) {
 
 	img := st.Tabs[st.Current].Image
 	zoom := st.Tabs[st.Current].Zoom
-	base := imageRect(img, st.Width, st.Height, zoom)
+	base := imageRect(img, st.Height, zoom)
 	off := st.Tabs[st.Current].Offset
 	dst := base.Add(image.Pt(int(float64(off.X)*zoom), int(float64(off.Y)*zoom)))
 	xdraw.NearestNeighbor.Scale(b, dst, img, img.Bounds(), draw.Over, nil)

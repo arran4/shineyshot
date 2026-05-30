@@ -39,7 +39,7 @@ func (f fakeBackend) CaptureWindowImage(uint32) (*image.RGBA, error) {
 	return image.NewRGBA(image.Rect(0, 0, 1, 1)), nil
 }
 
-func TestCaptureWindowDetailedListWindowsError(t *testing.T) {
+func TestWindowDetailedListWindowsError(t *testing.T) {
 	t.Helper()
 
 	originalBackend := backend
@@ -47,7 +47,7 @@ func TestCaptureWindowDetailedListWindowsError(t *testing.T) {
 	backend = fakeBackend{windowsErr: windowsErr}
 	t.Cleanup(func() { backend = originalBackend })
 
-	if _, _, err := CaptureWindowDetailed("foo", CaptureOptions{}); err == nil {
+	if _, _, err := WindowDetailed("foo", Options{}); err == nil {
 		t.Fatalf("expected error")
 	} else {
 		if !errors.Is(err, windowsErr) {
@@ -69,20 +69,20 @@ func TestScreenshotFallsBackToPipewire(t *testing.T) {
 		pipewireScreenshotFn = prevPipewire
 	})
 
-	portalScreenshotFn = func(bool, CaptureOptions) (*image.RGBA, error) {
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
 		return nil, &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
 	}
 
 	called := false
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
-	pipewireScreenshotFn = func(CaptureOptions) (*image.RGBA, error) {
+	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
 		called = true
 		return want, nil
 	}
 
-	got, err := CaptureScreenshot("", CaptureOptions{})
+	got, err := Screenshot("", Options{})
 	if err != nil {
-		t.Fatalf("CaptureScreenshot returned error: %v", err)
+		t.Fatalf("Screenshot returned error: %v", err)
 	}
 	if !called {
 		t.Fatalf("expected pipewire fallback to be used")
@@ -102,20 +102,20 @@ func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
 		pipewireScreenshotFn = prevPipewire
 	})
 
-	portalScreenshotFn = func(bool, CaptureOptions) (*image.RGBA, error) {
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
 		return nil, fmt.Errorf("portal screenshot call: %w", &dbus.Error{Name: "org.freedesktop.DBus.Error.Disconnected"})
 	}
 
 	called := false
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
-	pipewireScreenshotFn = func(CaptureOptions) (*image.RGBA, error) {
+	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
 		called = true
 		return want, nil
 	}
 
-	got, err := CaptureScreenshot("", CaptureOptions{})
+	got, err := Screenshot("", Options{})
 	if err != nil {
-		t.Fatalf("CaptureScreenshot returned error: %v", err)
+		t.Fatalf("Screenshot returned error: %v", err)
 	}
 	if !called {
 		t.Fatalf("expected pipewire fallback to be used")
@@ -135,17 +135,17 @@ func TestScreenshotFallbackPipewireFailure(t *testing.T) {
 		pipewireScreenshotFn = prevPipewire
 	})
 
-	portalScreenshotFn = func(bool, CaptureOptions) (*image.RGBA, error) {
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
 		return nil, &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
 	}
 
 	pipewireCalled := false
-	pipewireScreenshotFn = func(CaptureOptions) (*image.RGBA, error) {
+	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
 		pipewireCalled = true
 		return nil, errors.New("pipewire unavailable")
 	}
 
-	_, err := CaptureScreenshot("", CaptureOptions{})
+	_, err := Screenshot("", Options{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -168,17 +168,17 @@ func TestInteractiveScreenshotDoesNotFallbackToPipewire(t *testing.T) {
 	})
 
 	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
-	portalScreenshotFn = func(bool, CaptureOptions) (*image.RGBA, error) {
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
 		return nil, portalErr
 	}
 
 	pipewireCalled := false
-	pipewireScreenshotFn = func(CaptureOptions) (*image.RGBA, error) {
+	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
 		pipewireCalled = true
 		return nil, errors.New("pipewire should not be used")
 	}
 
-	_, err := CaptureRegion(CaptureOptions{})
+	_, err := Region(Options{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
