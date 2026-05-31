@@ -146,7 +146,7 @@ func (a *annotateCmd) Run() error {
 	switch a.action {
 	case "capture":
 		var err error
-		opts := capture.CaptureOptions{
+		opts := capture.Options{
 			IncludeDecorations: a.capture.includeDecorations,
 			IncludeCursor:      a.capture.includeCursor,
 		}

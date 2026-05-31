@@ -10,7 +10,7 @@ import (
 	"github.com/jezek/xgb/xproto"
 )
 
-func pipewireScreenshot(opts CaptureOptions) (*image.RGBA, error) {
+func pipewireScreenshot(opts Options) (*image.RGBA, error) {
 	_ = opts
 	conn, err := xgb.NewConn()
 	if err != nil {

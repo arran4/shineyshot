@@ -231,8 +231,8 @@ func (s *snapshotCmd) describeCapture() string {
 	return mode
 }
 
-func (s *snapshotCmd) captureOptions() capture.CaptureOptions {
-	return capture.CaptureOptions{
+func (s *snapshotCmd) captureOptions() capture.Options {
+	return capture.Options{
 		IncludeDecorations: s.includeDecorations,
 		IncludeCursor:      s.includeCursor,
 	}

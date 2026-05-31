@@ -17,7 +17,7 @@ import (
 
 var portalHandleToken = newPortalHandleToken
 
-func portalScreenshot(interactive bool, captureOpts CaptureOptions) (*image.RGBA, error) {
+func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error) {
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return nil, fmt.Errorf("dbus connect: %w", err)
@@ -97,7 +97,7 @@ func newPortalHandleToken() string {
 	return fmt.Sprintf("shineyshot-%d", time.Now().UnixNano())
 }
 
-func portalScreenshotOptions(interactive bool, captureOpts CaptureOptions) map[string]dbus.Variant {
+func portalScreenshotOptions(interactive bool, captureOpts Options) map[string]dbus.Variant {
 	cursorMode := "hidden"
 	if captureOpts.IncludeCursor {
 		cursorMode = "embedded"

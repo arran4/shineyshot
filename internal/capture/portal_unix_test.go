@@ -16,21 +16,21 @@ func TestPortalScreenshotOptions(t *testing.T) {
 	tests := []struct {
 		name        string
 		interactive bool
-		opts        CaptureOptions
+		opts        Options
 		wantCursor  string
 		wantRestore bool
 	}{
 		{
 			name:        "defaults",
 			interactive: false,
-			opts:        CaptureOptions{},
+			opts:        Options{},
 			wantCursor:  "hidden",
 			wantRestore: false,
 		},
 		{
 			name:        "cursor and decorations",
 			interactive: true,
-			opts: CaptureOptions{
+			opts: Options{
 				IncludeDecorations: true,
 				IncludeCursor:      true,
 			},

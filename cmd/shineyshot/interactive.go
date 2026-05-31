@@ -104,8 +104,8 @@ func newInteractiveCmd(r *root) *interactiveCmd {
 	}
 }
 
-func (i *interactiveCmd) captureOptions() capture.CaptureOptions {
-	return capture.CaptureOptions{
+func (i *interactiveCmd) captureOptions() capture.Options {
+	return capture.Options{
 		IncludeDecorations: i.includeDecorations,
 		IncludeCursor:      i.includeCursor,
 	}
@@ -265,9 +265,9 @@ func (i *interactiveCmd) handleCapture(args []string) {
 		if len(params) >= 1 {
 			display = strings.Join(params, " ")
 		}
-		img, err = capture.CaptureScreenshot(display, opts)
+		img, err = capture.Screenshot(display, opts)
 		if err != nil && display == "" {
-			img, err = capture.CaptureScreenshot("0", opts)
+			img, err = capture.Screenshot("0", opts)
 			if err == nil {
 				target = "display 0"
 			}
@@ -296,7 +296,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			selector = strings.Join(params, " ")
 		}
 		var info capture.WindowInfo
-		img, info, err = capture.CaptureWindowDetailed(selector, opts)
+		img, info, err = capture.WindowDetailed(selector, opts)
 		if err != nil {
 			i.writeln(i.stderr, err)
 			i.printWindowList()
@@ -345,7 +345,7 @@ func (i *interactiveCmd) handleCapture(args []string) {
 			monitor.Rect.Min.X+coords[0]+coords[2],
 			monitor.Rect.Min.Y+coords[1]+coords[3],
 		)
-		img, err = capture.CaptureRegionRect(rect, opts)
+		img, err = capture.RegionRect(rect, opts)
 		if err == nil {
 			target = fmt.Sprintf("%s @ %dx%d+%d,%d", formatMonitorName(monitor), coords[2], coords[3], coords[0], coords[1])
 		}

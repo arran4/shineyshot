@@ -371,7 +371,7 @@ func ensureSocketDir(dir string) error {
 	return os.MkdirAll(dir, 0o755)
 }
 
-func startBackgroundServer(dir, desiredName string, r *root) (string, error) {
+func startBackgroundServer(dir, desiredName string, _ *root) (string, error) {
 	if err := ensureSocketDir(dir); err != nil {
 		return "", err
 	}
