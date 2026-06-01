@@ -40,7 +40,9 @@ func (l *Loader) Load(name string) (*Theme, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		return Parse(f)
 	}
 
@@ -52,7 +54,9 @@ func (l *Loader) Load(name string) (*Theme, error) {
 
 	// 2. Embedded
 	if f, err := EmbeddedThemes.Open("defaults/" + filename); err == nil {
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		return Parse(f)
 	}
 
@@ -63,7 +67,9 @@ func (l *Loader) Load(name string) (*Theme, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		return Parse(f)
 	}
 
@@ -74,7 +80,9 @@ func (l *Loader) Load(name string) (*Theme, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		return Parse(f)
 	}
 
