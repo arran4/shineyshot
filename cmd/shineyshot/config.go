@@ -88,7 +88,9 @@ func (c *configCmd) runSave(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create config file %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	if _, err := f.WriteString(cfg.String()); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)

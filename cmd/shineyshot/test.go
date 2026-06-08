@@ -85,7 +85,9 @@ func (c *testVerificationCmd) Run() error {
 	if err != nil {
 		return fmt.Errorf("open input: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	var cfg VerificationConfig
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
@@ -148,7 +150,9 @@ func (c *testVerificationCmd) Run() error {
 	if err != nil {
 		return fmt.Errorf("create output: %w", err)
 	}
-	defer outF.Close()
+	defer func() {
+		_ = outF.Close()
+	}()
 
 	if err := png.Encode(outF, outImg); err != nil {
 		return fmt.Errorf("encode output: %w", err)

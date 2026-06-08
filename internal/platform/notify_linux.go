@@ -12,7 +12,9 @@ func Notify(title, body string, opts Options) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	obj := conn.Object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
 	call := obj.Call("org.freedesktop.Notifications.Notify", 0,
