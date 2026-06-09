@@ -205,7 +205,7 @@ func (a *annotateCmd) Run() error {
 		img = res.Image
 	}
 	if a.action == "capture" && a.root != nil {
-		a.root.notifyCapture(a.captureDetail(), img)
+		a.notifyCapture(a.captureDetail(), img)
 	}
 	detail := ""
 	fileName := ""
@@ -230,7 +230,7 @@ func (a *annotateCmd) Run() error {
 		appstate.WithShadowDefaults(shadowOpts),
 		appstate.WithInitialShadowApplied(a.shadow),
 		appstate.WithInitialShadowOffset(initialShadowOffset),
-		appstate.WithTheme(a.root.activeTheme),
+		appstate.WithTheme(a.activeTheme),
 	}
 	if strings.TrimSpace(a.output) != "" {
 		opts = append(opts, appstate.WithOutput(a.output))

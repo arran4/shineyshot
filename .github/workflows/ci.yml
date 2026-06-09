@@ -199,6 +199,9 @@ jobs:
     needs: [route, discover]
     if: ${{ needs.discover.outputs.has_go == 'true' && needs.route.outputs.run_code_checks == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -206,9 +209,12 @@ jobs:
           go-version-file: go.mod
       - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
+          args: --timeout=5m
+        env:
+          GOTOOLCHAIN: auto
 
   go-test:
     name: Go lint/test (${{ matrix.os }})
@@ -484,7 +490,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
       - name: Tag commit for release (workflow_dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.mode, 'release-') }}
-        run: git tag ${{ needs.prepare-release-tag.outputs.release_tag }}
+        run: git tag --force ${{ needs.prepare-release-tag.outputs.release_tag }}
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
