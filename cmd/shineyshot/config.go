@@ -57,7 +57,7 @@ func (c *configCmd) runSave(args []string) error {
 		return err
 	}
 
-	cfg := c.root.config
+	cfg := c.config
 	path := ""
 
 	// If loader found a config file, save there

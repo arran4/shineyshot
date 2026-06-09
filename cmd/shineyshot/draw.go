@@ -215,7 +215,7 @@ func (d *drawCmd) Run() error {
 	}
 	fmt.Fprintf(os.Stderr, "saved %s\n", saved)
 	if d.root != nil {
-		d.root.notifySave(saved)
+		d.notifySave(saved)
 	}
 	if d.toClipboard {
 		if err := clipboard.WriteImage(rgba); err != nil {
@@ -227,7 +227,7 @@ func (d *drawCmd) Run() error {
 		}
 		fmt.Fprintf(os.Stderr, "copied %s to clipboard\n", detail)
 		if d.root != nil {
-			d.root.notifyCopy(detail)
+			d.notifyCopy(detail)
 		}
 	}
 	return nil
