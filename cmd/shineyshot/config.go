@@ -46,7 +46,7 @@ func (c *configCmd) Run() error {
 
 func (c *configCmd) runPrint() error {
 	// Print the current configuration
-	fmt.Print(c.root.config.String())
+	fmt.Print(c.config.String())
 	return nil
 }
 
