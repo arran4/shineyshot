@@ -130,7 +130,7 @@ func (s *snapshotCmd) Run() error {
 	}
 	if s.root != nil {
 		detail := s.describeCapture()
-		s.root.notifyCapture(detail, img)
+		s.notifyCapture(detail, img)
 	}
 	if s.toClipboard {
 		if err := clipboard.WriteImage(img); err != nil {
@@ -142,7 +142,7 @@ func (s *snapshotCmd) Run() error {
 		}
 		fmt.Fprintf(os.Stderr, "copied %s to clipboard\n", detail)
 		if s.root != nil {
-			s.root.notifyCopy(detail)
+			s.notifyCopy(detail)
 		}
 		return nil
 	}
@@ -177,7 +177,7 @@ func (s *snapshotCmd) Run() error {
 	}
 	fmt.Fprintf(os.Stderr, "saved %s\n", saved)
 	if s.root != nil {
-		s.root.notifySave(saved)
+		s.notifySave(saved)
 	}
 	return nil
 }

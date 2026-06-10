@@ -135,7 +135,7 @@ func (c *testVerificationCmd) Run() error {
 		HandleShortcut:    func(string) {},
 		AnnotationEnabled: cfg.AnnotationEnabled,
 		VersionLabel:      cfg.VersionLabel,
-		Theme:             c.root.activeTheme,
+		Theme:             c.activeTheme,
 		ToolButtons:       appstate.DefaultToolButtons(cfg.AnnotationEnabled),
 	}
 
