@@ -79,7 +79,7 @@ func (p *previewCmd) Run() error {
 			Tab:  "Tab 1",
 		})),
 		appstate.WithVersion(version),
-		appstate.WithTheme(p.root.activeTheme),
+		appstate.WithTheme(p.activeTheme),
 	)
 	st.Run()
 	return nil

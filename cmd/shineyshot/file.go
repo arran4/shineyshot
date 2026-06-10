@@ -42,9 +42,9 @@ func parseFileCmd(args []string, r *root) (*fileCmd, error) {
 }
 
 func (f *fileCmd) Run() error {
-	child := f.root.subcommand("file")
+	child := f.subcommand("file")
 	defer func() {
-		f.root.state = child.state
+		f.state = child.state
 	}()
 	switch f.op {
 	case "capture":
