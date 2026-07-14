@@ -1,0 +1,12 @@
+Usage: {{.Program}} install <source> [name] [flags]
+
+Installs a skill from a local directory or remote repository.
+
+Arguments:
+  <source>    Local directory path or GitHub repository (e.g., owner/repo)
+  [name]      Optional custom name for the installed skill
+
+Flags:
+{{range flags .FlagSet}}  -{{.Name}} {{.DefValue}}
+        {{.Usage}}
+{{end}}

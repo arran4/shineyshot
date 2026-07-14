@@ -1,0 +1,11 @@
+Usage: {{.Program}} remove <name> [flags]
+
+Removes an installed skill.
+
+Arguments:
+  <name>      Name of the installed skill to remove
+
+Flags:
+{{range flags .FlagSet}}  -{{.Name}} {{.DefValue}}
+        {{.Usage}}
+{{end}}

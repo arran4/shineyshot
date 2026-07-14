@@ -1,0 +1,11 @@
+Usage: {{.Program}} update <name> [flags]
+
+Updates an installed skill to the latest version.
+
+Arguments:
+  <name>      Name of the installed skill to update
+
+Flags:
+{{range flags .FlagSet}}  -{{.Name}} {{.DefValue}}
+        {{.Usage}}
+{{end}}
