@@ -36,7 +36,7 @@ func (s *GitHubSource) Resolve(ctx context.Context) (fs.FS, string, error) {
 	cmd := exec.CommandContext(ctx, "git", "clone", "--depth=1", repoURL, tmpDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		return nil, "", fmt.Errorf("git clone failed: %v\nOutput: %s", err, string(out))
 	}
 
@@ -59,7 +59,7 @@ func (s *GitHubSource) Resolve(ctx context.Context) (fs.FS, string, error) {
 	skillMdPath := filepath.Join(targetPath, "SKILL.md")
 	_, err = os.Stat(skillMdPath)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		return nil, "", fmt.Errorf("SKILL.md not found in repository path")
 	}
 
