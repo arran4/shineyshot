@@ -39,7 +39,7 @@ func (i *Installer) Install(ctx context.Context, source Source, skillName string
 	}
 
 	// Remove temp dir if it exists
-	os.RemoveAll(tmpDest)
+	_ = os.RemoveAll(tmpDest)
 
 	if err := os.MkdirAll(tmpDest, 0755); err != nil {
 		return fmt.Errorf("failed to create tmp dir: %w", err)
@@ -69,20 +69,20 @@ func (i *Installer) Install(ctx context.Context, source Source, skillName string
 		if err != nil {
 			return err
 		}
-		defer srcFile.Close()
+		defer func() { _ = srcFile.Close() }()
 
 		destFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
 			return err
 		}
-		defer destFile.Close()
+		defer func() { _ = destFile.Close() }()
 
 		_, err = io.Copy(destFile, srcFile)
 		return err
 	})
 
 	if err != nil {
-		os.RemoveAll(tmpDest)
+		_ = os.RemoveAll(tmpDest)
 		return fmt.Errorf("failed to copy skill files: %w", err)
 	}
 
@@ -102,17 +102,15 @@ func (i *Installer) Install(ctx context.Context, source Source, skillName string
 	}
 
 	if err := WriteMetadata(tmpDest, meta); err != nil {
-		os.RemoveAll(tmpDest)
+		_ = os.RemoveAll(tmpDest)
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 
 	// Atomic rename
-	if err := os.RemoveAll(skillDest); err != nil {
-		// Ignore if it doesn't exist
-	}
+	_ = os.RemoveAll(skillDest) // Ignore if it doesn't exist
 
 	if err := os.Rename(tmpDest, skillDest); err != nil {
-		os.RemoveAll(tmpDest)
+		_ = os.RemoveAll(tmpDest)
 		return fmt.Errorf("failed to finalize installation: %w", err)
 	}
 

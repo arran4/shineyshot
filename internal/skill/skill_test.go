@@ -44,14 +44,14 @@ func TestInstaller(t *testing.T) {
 
 	// Create a dummy local skill
 	skillSrcDir := filepath.Join(tmpDir, "myskill-src")
-	os.MkdirAll(skillSrcDir, 0755)
-	os.WriteFile(filepath.Join(skillSrcDir, "SKILL.md"), []byte("# Dummy Skill"), 0644)
-	os.WriteFile(filepath.Join(skillSrcDir, "extra.txt"), []byte("extra"), 0644)
+	_ = os.MkdirAll(skillSrcDir, 0755)
+	_ = os.WriteFile(filepath.Join(skillSrcDir, "SKILL.md"), []byte("# Dummy Skill"), 0644)
+	_ = os.WriteFile(filepath.Join(skillSrcDir, "extra.txt"), []byte("extra"), 0644)
 
 	src := NewLocalSource(skillSrcDir)
 
 	targetBase := filepath.Join(tmpDir, "agents-skills")
-	os.MkdirAll(targetBase, 0755)
+	_ = os.MkdirAll(targetBase, 0755)
 
 	// Create a dummy target
 	target := &dummyTarget{path: targetBase, name: "dummy"}

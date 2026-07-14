@@ -117,13 +117,13 @@ func (c *skillCmd) runInstall() error {
 	target := c.resolveTarget(scope, agent)
 	installer := skill.NewInstaller(target)
 
-	fmt.Fprintf(os.Stdout, "Installing skill '%s'...\n", skillName)
+	_, _ = fmt.Fprintf(os.Stdout, "Installing skill '%s'...\n", skillName)
 	err := installer.Install(context.Background(), src, skillName)
 	if err != nil {
 		return fmt.Errorf("installation failed: %w", err)
 	}
 
-	fmt.Fprintf(os.Stdout, "Skill '%s' installed successfully.\n", skillName)
+	_, _ = fmt.Fprintf(os.Stdout, "Skill '%s' installed successfully.\n", skillName)
 	return nil
 }
 
@@ -151,7 +151,7 @@ func (c *skillCmd) runUpdate() error {
 	target := c.resolveTarget(scope, agent)
 	installer := skill.NewInstaller(target)
 
-	fmt.Fprintf(os.Stdout, "Updating skill '%s'...\n", skillName)
+	_, _ = fmt.Fprintf(os.Stdout, "Updating skill '%s'...\n", skillName)
 	updated, err := installer.Update(context.Background(), skillName, force)
 	if err != nil {
 		return err
@@ -225,12 +225,12 @@ func (c *skillCmd) runList() error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stdout, string(b))
+		_, _ = fmt.Fprintln(os.Stdout, string(b))
 		return nil
 	}
 
 	if len(skills) == 0 {
-		fmt.Fprintln(os.Stdout, "No skills installed.")
+		_, _ = fmt.Fprintln(os.Stdout, "No skills installed.")
 		return nil
 	}
 
@@ -271,7 +271,7 @@ func (c *skillCmd) runInspect() error {
 	for _, s := range skills {
 		if s.Name == skillName {
 			b, _ := json.MarshalIndent(s, "", "  ")
-			fmt.Fprintln(os.Stdout, string(b))
+			_, _ = fmt.Fprintln(os.Stdout, string(b))
 			return nil
 		}
 	}
