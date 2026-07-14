@@ -19,7 +19,22 @@ func NewInstaller(target Target) *Installer {
 	return &Installer{Target: target}
 }
 
+func isValidSkillName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 func (i *Installer) Install(ctx context.Context, source Source, skillName string) error {
+	if !isValidSkillName(skillName) {
+		return fmt.Errorf("invalid skill name %q: must contain only alphanumeric characters, hyphens, and underscores", skillName)
+	}
 	skillFS, revision, err := source.Resolve(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to resolve source: %w", err)
@@ -57,6 +72,11 @@ func (i *Installer) Install(ctx context.Context, source Source, skillName string
 		// Guard against path traversal
 		if strings.Contains(path, "..") {
 			return fmt.Errorf("invalid path traversal detected: %s", path)
+		}
+
+		// Reject symlinks to prevent arbitrary file reading/writing
+		if d.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not allowed: %s", path)
 		}
 
 		destPath := filepath.Join(tmpDest, path)
@@ -107,7 +127,11 @@ func (i *Installer) Install(ctx context.Context, source Source, skillName string
 	}
 
 	// Atomic rename
-	_ = os.RemoveAll(skillDest) // Ignore if it doesn't exist
+	if err := os.RemoveAll(skillDest); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove existing skill directory: %w", err)
+		}
+	}
 
 	if err := os.Rename(tmpDest, skillDest); err != nil {
 		_ = os.RemoveAll(tmpDest)
@@ -118,6 +142,9 @@ func (i *Installer) Install(ctx context.Context, source Source, skillName string
 }
 
 func (i *Installer) Remove(skillName string) error {
+	if !isValidSkillName(skillName) {
+		return fmt.Errorf("invalid skill name %q", skillName)
+	}
 	targetBase, err := i.Target.Path()
 	if err != nil {
 		return fmt.Errorf("failed to get target path: %w", err)
@@ -125,15 +152,21 @@ func (i *Installer) Remove(skillName string) error {
 
 	skillDest := filepath.Join(targetBase, skillName)
 
-	// Ensure the directory exists and has a SKILL.md before deleting
-	if _, err := os.Stat(filepath.Join(skillDest, "SKILL.md")); err != nil {
-		return fmt.Errorf("skill '%s' not found or not a valid skill", skillName)
+	// Ensure the directory exists before deleting
+	if _, err := os.Stat(skillDest); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("skill '%s' not found", skillName)
+		}
+		return fmt.Errorf("failed to stat skill directory: %w", err)
 	}
 
 	return os.RemoveAll(skillDest)
 }
 
 func (i *Installer) Update(ctx context.Context, skillName string, force bool) (bool, error) {
+	if !isValidSkillName(skillName) {
+		return false, fmt.Errorf("invalid skill name %q", skillName)
+	}
 	targetBase, err := i.Target.Path()
 	if err != nil {
 		return false, fmt.Errorf("failed to get target path: %w", err)

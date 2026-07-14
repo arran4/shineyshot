@@ -270,7 +270,10 @@ func (c *skillCmd) runInspect() error {
 
 	for _, s := range skills {
 		if s.Name == skillName {
-			b, _ := json.MarshalIndent(s, "", "  ")
+			b, err := json.MarshalIndent(s, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal skill details: %w", err)
+			}
 			_, _ = fmt.Fprintln(os.Stdout, string(b))
 			return nil
 		}
