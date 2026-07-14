@@ -168,6 +168,8 @@ func (r *root) Run(args []string) error {
 		cmd, err = parseTestCmd(subArgs, r)
 	case "config":
 		cmd, err = parseConfigCmd(subArgs, r)
+	case "skill":
+		cmd, err = parseSkillCmd(subArgs, r)
 	case "version":
 		cmd = &versionCmd{r: r}
 	default:

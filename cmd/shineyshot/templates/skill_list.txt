@@ -1,0 +1,8 @@
+Usage: {{.Program}} list [flags]
+
+Lists installed skills.
+
+Flags:
+{{range flags .FlagSet}}  -{{.Name}} {{.DefValue}}
+        {{.Usage}}
+{{end}}

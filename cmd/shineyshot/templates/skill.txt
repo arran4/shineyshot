@@ -1,0 +1,12 @@
+Usage: {{.Program}} <command> [flags]
+
+Manage agent skills for ShineyShot.
+
+Commands:
+  install    Install a skill from a local path or repository
+  update     Update an installed skill
+  remove     Remove an installed skill
+  list       List installed skills
+  inspect    Inspect an installed skill
+
+Run '{{.Program}} <command> -h' for more information on a command.

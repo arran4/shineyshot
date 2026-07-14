@@ -1,0 +1,11 @@
+Usage: {{.Program}} inspect <name> [flags]
+
+Inspects metadata and details of an installed skill.
+
+Arguments:
+  <name>      Name of the installed skill to inspect
+
+Flags:
+{{range flags .FlagSet}}  -{{.Name}} {{.DefValue}}
+        {{.Usage}}
+{{end}}

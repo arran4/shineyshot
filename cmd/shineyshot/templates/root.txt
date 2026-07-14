@@ -8,4 +8,5 @@ Commands:
   windows       list available windows and selectors
   colors        list available palette colors
   widths        list available stroke widths
+  skill         manage agent skills
   version       display version information
