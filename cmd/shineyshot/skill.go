@@ -158,9 +158,9 @@ func (c *skillCmd) runUpdate() error {
 	}
 
 	if updated {
-		fmt.Fprintf(os.Stdout, "Skill '%s' updated successfully.\n", skillName)
+		_, _ = fmt.Fprintf(os.Stdout, "Skill '%s' updated successfully.\n", skillName)
 	} else {
-		fmt.Fprintf(os.Stdout, "Skill '%s' is already up to date.\n", skillName)
+		_, _ = fmt.Fprintf(os.Stdout, "Skill '%s' is already up to date.\n", skillName)
 	}
 	return nil
 }
@@ -192,7 +192,7 @@ func (c *skillCmd) runRemove() error {
 		return fmt.Errorf("failed to remove skill: %w", err)
 	}
 
-	fmt.Fprintf(os.Stdout, "Skill '%s' removed from scope '%s'.\n", skillName, scope)
+	_, _ = fmt.Fprintf(os.Stdout, "Skill '%s' removed from scope '%s'.\n", skillName, scope)
 	return nil
 }
 
@@ -234,9 +234,9 @@ func (c *skillCmd) runList() error {
 		return nil
 	}
 
-	fmt.Fprintf(os.Stdout, "%-20s %-15s %-30s %s\n", "NAME", "SCOPE", "SOURCE", "REVISION")
+	_, _ = fmt.Fprintf(os.Stdout, "%-20s %-15s %-30s %s\n", "NAME", "SCOPE", "SOURCE", "REVISION")
 	for _, s := range skills {
-		fmt.Fprintf(os.Stdout, "%-20s %-15s %-30s %s\n", s.Name, s.Scope, s.Source, s.Revision)
+		_, _ = fmt.Fprintf(os.Stdout, "%-20s %-15s %-30s %s\n", s.Name, s.Scope, s.Source, s.Revision)
 	}
 	return nil
 }
