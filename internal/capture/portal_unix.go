@@ -109,7 +109,9 @@ func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error
 	if err := bus.AddMatchSignal(matchExpectedPath, matchIface, matchMember); err != nil {
 		return nil, fmt.Errorf("portal screenshot subscribe expected path: %w", err)
 	}
-	defer bus.RemoveMatchSignal(matchExpectedPath, matchIface, matchMember)
+	defer func() {
+		_ = bus.RemoveMatchSignal(matchExpectedPath, matchIface, matchMember)
+	}()
 
 	opts := portalScreenshotOptions(interactive, captureOpts, token)
 	call, err := bus.Call("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Screenshot.Screenshot", 0, "", opts)
@@ -127,7 +129,9 @@ func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error
 		if err := bus.AddMatchSignal(matchHandlePath, matchIface, matchMember); err != nil {
 			return nil, fmt.Errorf("portal screenshot subscribe legacy path: %w", err)
 		}
-		defer bus.RemoveMatchSignal(matchHandlePath, matchIface, matchMember)
+		defer func() {
+			_ = bus.RemoveMatchSignal(matchHandlePath, matchIface, matchMember)
+		}()
 	}
 
 	for sig := range sigc {
