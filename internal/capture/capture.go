@@ -7,6 +7,9 @@ import (
 	"image/draw"
 )
 
+// ErrCancelled is returned when the user cancels an interactive capture request.
+var ErrCancelled = errors.New("capture cancelled")
+
 // Options describes optional preferences when capturing screenshots.
 type Options struct {
 	// IncludeDecorations requests that window captures include decorations when
