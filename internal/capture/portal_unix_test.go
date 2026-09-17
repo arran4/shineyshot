@@ -3,6 +3,7 @@
 package capture
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -136,7 +137,7 @@ func stringVariant(t *testing.T, values map[string]dbus.Variant, key string) str
 
 func TestPortalScreenshotWorkflow(t *testing.T) {
 	prevToken := portalHandleToken
-	portalHandleToken = func() string { return "test_token" }
+	portalHandleToken = func() (string, error) { return "test_token", nil }
 	t.Cleanup(func() { portalHandleToken = prevToken })
 
 	prevConnect := connectPortalBus
@@ -179,7 +180,7 @@ func TestPortalScreenshotWorkflow(t *testing.T) {
 
 func TestPortalScreenshotCancellation(t *testing.T) {
 	prevToken := portalHandleToken
-	portalHandleToken = func() string { return "test_token" }
+	portalHandleToken = func() (string, error) { return "test_token", nil }
 	t.Cleanup(func() { portalHandleToken = prevToken })
 
 	prevConnect := connectPortalBus
@@ -212,7 +213,7 @@ func TestPortalScreenshotCancellation(t *testing.T) {
 
 func TestPortalScreenshotFailure(t *testing.T) {
 	prevToken := portalHandleToken
-	portalHandleToken = func() string { return "test_token" }
+	portalHandleToken = func() (string, error) { return "test_token", nil }
 	t.Cleanup(func() { portalHandleToken = prevToken })
 
 	prevConnect := connectPortalBus
@@ -245,7 +246,7 @@ func TestPortalScreenshotFailure(t *testing.T) {
 
 func TestPortalScreenshotLegacyPath(t *testing.T) {
 	prevToken := portalHandleToken
-	portalHandleToken = func() string { return "test_token" }
+	portalHandleToken = func() (string, error) { return "test_token", nil }
 	t.Cleanup(func() { portalHandleToken = prevToken })
 
 	prevConnect := connectPortalBus
@@ -291,7 +292,7 @@ func TestPortalScreenshotLegacyPath(t *testing.T) {
 
 func TestPortalScreenshotMalformedResponse(t *testing.T) {
 	prevToken := portalHandleToken
-	portalHandleToken = func() string { return "test_token" }
+	portalHandleToken = func() (string, error) { return "test_token", nil }
 	t.Cleanup(func() { portalHandleToken = prevToken })
 
 	prevConnect := connectPortalBus
@@ -319,5 +320,216 @@ func TestPortalScreenshotMalformedResponse(t *testing.T) {
 	_, err := portalScreenshot(false, Options{})
 	if err == nil || !strings.Contains(err.Error(), "malformed response, expected 2 arguments") {
 		t.Fatalf("expected malformed response error, got %v", err)
+	}
+}
+
+func TestPortalHandleTokenAndPath(t *testing.T) {
+	token, err := newPortalHandleToken()
+	if err != nil {
+		t.Fatalf("newPortalHandleToken() failed: %v", err)
+	}
+	if token == "" {
+		t.Fatal("newPortalHandleToken() returned empty token")
+	}
+
+	// Verify token contains only valid D-Bus object-path-element characters: [A-Za-z0-9_]
+	for _, c := range token {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
+			t.Fatalf("token %q contains invalid D-Bus object path element character %q", token, c)
+		}
+	}
+
+	// Verify expected request path with real token is valid
+	pathWithRealToken := expectedRequestPath(":1.42", token)
+	if !pathWithRealToken.IsValid() {
+		t.Fatalf("expected request path %q is not a valid dbus.ObjectPath", pathWithRealToken)
+	}
+
+	// Verify repeated generation does not trivially return the same token
+	seen := make(map[string]bool)
+	const iterations = 50
+	for i := 0; i < iterations; i++ {
+		tok, err := newPortalHandleToken()
+		if err != nil {
+			t.Fatalf("iteration %d: newPortalHandleToken() failed: %v", i, err)
+		}
+		if seen[tok] {
+			t.Fatalf("iteration %d: duplicate token generated: %q", i, tok)
+		}
+		seen[tok] = true
+	}
+
+	// Verify predictable-path construction converts senders (e.g., :1.42 -> 1_42)
+	testCases := []struct {
+		sender   string
+		token    string
+		wantPath dbus.ObjectPath
+	}{
+		{
+			sender:   ":1.42",
+			token:    "token_1",
+			wantPath: "/org/freedesktop/portal/desktop/request/1_42/token_1",
+		},
+		{
+			sender:   ":1.100.2",
+			token:    "token_multi",
+			wantPath: "/org/freedesktop/portal/desktop/request/1_100_2/token_multi",
+		},
+		{
+			sender:   ":1.0",
+			token:    token,
+			wantPath: dbus.ObjectPath("/org/freedesktop/portal/desktop/request/1_0/" + token),
+		},
+	}
+	for _, tc := range testCases {
+		got := expectedRequestPath(tc.sender, tc.token)
+		if got != tc.wantPath {
+			t.Errorf("expectedRequestPath(%q, %q) = %q, want %q", tc.sender, tc.token, got, tc.wantPath)
+		}
+		if !got.IsValid() {
+			t.Errorf("path %q is not a valid dbus.ObjectPath", got)
+		}
+	}
+}
+
+func TestPortalScreenshotTokenError(t *testing.T) {
+	prevToken := portalHandleToken
+	portalHandleToken = func() (string, error) { return "", errors.New("entropy failure") }
+	t.Cleanup(func() { portalHandleToken = prevToken })
+
+	prevConnect := connectPortalBus
+	t.Cleanup(func() { connectPortalBus = prevConnect })
+
+	mockBus := &mockPortalBus{uniqueName: ":1.42"}
+	connectPortalBus = func() (portalBus, error) { return mockBus, nil }
+
+	_, err := portalScreenshot(false, Options{})
+	if err == nil || !strings.Contains(err.Error(), "portal handle token: entropy failure") {
+		t.Fatalf("expected entropy failure error, got %v", err)
+	}
+}
+
+func TestPortalScreenshotResponseValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       []any
+		wantErrSub string
+	}{
+		{
+			name:       "short response body",
+			body:       []any{uint32(0)},
+			wantErrSub: "malformed response, expected 2 arguments",
+		},
+		{
+			name:       "malformed response code type",
+			body:       []any{"not_uint32", map[string]dbus.Variant{}},
+			wantErrSub: "expected uint32 response code",
+		},
+		{
+			name:       "unknown response code",
+			body:       []any{uint32(99), map[string]dbus.Variant{}},
+			wantErrSub: "unknown response code 99",
+		},
+		{
+			name:       "malformed results type",
+			body:       []any{uint32(0), "not a results map"},
+			wantErrSub: "expected map[string]dbus.Variant results",
+		},
+		{
+			name:       "missing uri",
+			body:       []any{uint32(0), map[string]dbus.Variant{}},
+			wantErrSub: "missing uri in response",
+		},
+		{
+			name: "malformed uri type",
+			body: []any{
+				uint32(0),
+				map[string]dbus.Variant{
+					"uri": dbus.MakeVariant(123),
+				},
+			},
+			wantErrSub: "malformed uri, expected string",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			prevToken := portalHandleToken
+			portalHandleToken = func() (string, error) { return "test_token", nil }
+			t.Cleanup(func() { portalHandleToken = prevToken })
+
+			prevConnect := connectPortalBus
+			t.Cleanup(func() { connectPortalBus = prevConnect })
+
+			mockBus := &mockPortalBus{
+				uniqueName: ":1.42",
+			}
+			connectPortalBus = func() (portalBus, error) { return mockBus, nil }
+
+			expectedPath := dbus.ObjectPath("/org/freedesktop/portal/desktop/request/1_42/test_token")
+
+			mockBus.callFunc = func(dest string, path dbus.ObjectPath, method string, flags dbus.Flags, args ...any) (*dbus.Call, error) {
+				mockBus.signalChan <- &dbus.Signal{
+					Path: expectedPath,
+					Name: "org.freedesktop.portal.Request.Response",
+					Body: tc.body,
+				}
+
+				return &dbus.Call{
+					Body: []any{expectedPath},
+				}, nil
+			}
+
+			_, err := portalScreenshot(false, Options{})
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErrSub)
+			}
+			if !strings.Contains(err.Error(), tc.wantErrSub) {
+				t.Fatalf("expected error containing %q, got %v", tc.wantErrSub, err)
+			}
+		})
+	}
+}
+
+func TestPortalScreenshotCleanupError(t *testing.T) {
+	prevToken := portalHandleToken
+	portalHandleToken = func() (string, error) { return "test_token", nil }
+	t.Cleanup(func() { portalHandleToken = prevToken })
+
+	prevConnect := connectPortalBus
+	t.Cleanup(func() { connectPortalBus = prevConnect })
+
+	mockBus := &mockPortalBus{
+		uniqueName:     ":1.42",
+		removeMatchErr: errors.New("simulated match removal failure"),
+	}
+	connectPortalBus = func() (portalBus, error) { return mockBus, nil }
+
+	expectedPath := dbus.ObjectPath("/org/freedesktop/portal/desktop/request/1_42/test_token")
+
+	mockBus.callFunc = func(dest string, path dbus.ObjectPath, method string, flags dbus.Flags, args ...any) (*dbus.Call, error) {
+		res := map[string]dbus.Variant{
+			"uri": dbus.MakeVariant("file:///test/path.png"),
+		}
+		mockBus.signalChan <- &dbus.Signal{
+			Path: expectedPath,
+			Name: "org.freedesktop.portal.Request.Response",
+			Body: []any{uint32(0), res},
+		}
+
+		return &dbus.Call{
+			Body: []any{expectedPath},
+		}, nil
+	}
+
+	// Even if RemoveMatchSignal fails, portalScreenshot should proceed to return the primary result
+	// without failing solely due to the cleanup error.
+	_, err := portalScreenshot(false, Options{})
+	if err == nil || !strings.Contains(err.Error(), "portal screenshot image: open /test/path.png") {
+		t.Fatalf("expected loadPNG error, got %v", err)
+	}
+
+	if mockBus.matchesRemoved != 1 {
+		t.Fatalf("expected 1 match removed attempt, got %d", mockBus.matchesRemoved)
 	}
 }

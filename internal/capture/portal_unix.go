@@ -3,6 +3,8 @@
 package capture
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"image"
@@ -10,7 +12,6 @@ import (
 	"image/png"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -95,7 +96,10 @@ func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error
 		}
 	}()
 
-	token := portalHandleToken()
+	token, err := portalHandleToken()
+	if err != nil {
+		return nil, fmt.Errorf("portal handle token: %w", err)
+	}
 	expectedPath := expectedRequestPath(bus.UniqueName(), token)
 
 	sigc := make(chan *dbus.Signal, 2)
@@ -110,7 +114,9 @@ func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error
 		return nil, fmt.Errorf("portal screenshot subscribe expected path: %w", err)
 	}
 	defer func() {
-		_ = bus.RemoveMatchSignal(matchExpectedPath, matchIface, matchMember)
+		if rerr := bus.RemoveMatchSignal(matchExpectedPath, matchIface, matchMember); rerr != nil {
+			fmt.Fprintf(os.Stderr, "remove match signal expected path: %v\n", rerr)
+		}
 	}()
 
 	opts := portalScreenshotOptions(interactive, captureOpts, token)
@@ -130,7 +136,9 @@ func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error
 			return nil, fmt.Errorf("portal screenshot subscribe legacy path: %w", err)
 		}
 		defer func() {
-			_ = bus.RemoveMatchSignal(matchHandlePath, matchIface, matchMember)
+			if rerr := bus.RemoveMatchSignal(matchHandlePath, matchIface, matchMember); rerr != nil {
+				fmt.Fprintf(os.Stderr, "remove match signal legacy path: %v\n", rerr)
+			}
 		}()
 	}
 
@@ -205,8 +213,12 @@ func isPortalUnsupportedError(err error) bool {
 	return strings.Contains(lower, "disconnected from message bus without replying")
 }
 
-func newPortalHandleToken() string {
-	return fmt.Sprintf("shineyshot-%d", time.Now().UnixNano())
+func newPortalHandleToken() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("generate portal handle token: %w", err)
+	}
+	return "shineyshot_" + hex.EncodeToString(b[:]), nil
 }
 
 func portalScreenshotOptions(interactive bool, captureOpts Options, token string) map[string]dbus.Variant {
