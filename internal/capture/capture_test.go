@@ -59,14 +59,16 @@ func TestWindowDetailedListWindowsError(t *testing.T) {
 	}
 }
 
-func TestScreenshotFallsBackToPipewire(t *testing.T) {
+func TestScreenshotFallsBackToX11Root(t *testing.T) {
 	t.Helper()
+	t.Setenv("XDG_SESSION_TYPE", "x11")
+	t.Setenv("WAYLAND_DISPLAY", "")
 
 	prevPortal := portalScreenshotFn
-	prevPipewire := pipewireScreenshotFn
+	prevX11Root := x11RootScreenshotFn
 	t.Cleanup(func() {
 		portalScreenshotFn = prevPortal
-		pipewireScreenshotFn = prevPipewire
+		x11RootScreenshotFn = prevX11Root
 	})
 
 	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
@@ -75,7 +77,7 @@ func TestScreenshotFallsBackToPipewire(t *testing.T) {
 
 	called := false
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
+	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
 		called = true
 		return want, nil
 	}
@@ -85,21 +87,23 @@ func TestScreenshotFallsBackToPipewire(t *testing.T) {
 		t.Fatalf("Screenshot returned error: %v", err)
 	}
 	if !called {
-		t.Fatalf("expected pipewire fallback to be used")
+		t.Fatalf("expected X11 root fallback to be used")
 	}
 	if got != want {
-		t.Fatalf("expected pipewire result, got %#v", got)
+		t.Fatalf("expected X11 root result, got %#v", got)
 	}
 }
 
 func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
 	t.Helper()
+	t.Setenv("XDG_SESSION_TYPE", "x11")
+	t.Setenv("WAYLAND_DISPLAY", "")
 
 	prevPortal := portalScreenshotFn
-	prevPipewire := pipewireScreenshotFn
+	prevX11Root := x11RootScreenshotFn
 	t.Cleanup(func() {
 		portalScreenshotFn = prevPortal
-		pipewireScreenshotFn = prevPipewire
+		x11RootScreenshotFn = prevX11Root
 	})
 
 	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
@@ -108,7 +112,7 @@ func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
 
 	called := false
 	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
+	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
 		called = true
 		return want, nil
 	}
@@ -118,53 +122,57 @@ func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
 		t.Fatalf("Screenshot returned error: %v", err)
 	}
 	if !called {
-		t.Fatalf("expected pipewire fallback to be used")
+		t.Fatalf("expected X11 root fallback to be used")
 	}
 	if got != want {
-		t.Fatalf("expected pipewire result, got %#v", got)
+		t.Fatalf("expected X11 root result, got %#v", got)
 	}
 }
 
-func TestScreenshotFallbackPipewireFailure(t *testing.T) {
+func TestScreenshotFallbackX11RootFailure(t *testing.T) {
 	t.Helper()
+	t.Setenv("XDG_SESSION_TYPE", "x11")
+	t.Setenv("WAYLAND_DISPLAY", "")
 
 	prevPortal := portalScreenshotFn
-	prevPipewire := pipewireScreenshotFn
+	prevX11Root := x11RootScreenshotFn
 	t.Cleanup(func() {
 		portalScreenshotFn = prevPortal
-		pipewireScreenshotFn = prevPipewire
+		x11RootScreenshotFn = prevX11Root
 	})
 
 	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
 		return nil, &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
 	}
 
-	pipewireCalled := false
-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
-		pipewireCalled = true
-		return nil, errors.New("pipewire unavailable")
+	x11RootCalled := false
+	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
+		x11RootCalled = true
+		return nil, errors.New("X11 root unavailable")
 	}
 
 	_, err := Screenshot("", Options{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	if !pipewireCalled {
-		t.Fatalf("expected pipewire fallback to be attempted")
+	if !x11RootCalled {
+		t.Fatalf("expected X11 root fallback to be attempted")
 	}
-	if !strings.Contains(err.Error(), "pipewire fallback") {
-		t.Fatalf("expected pipewire fallback context, got %v", err)
+	if !strings.Contains(err.Error(), "X11 root fallback") {
+		t.Fatalf("expected X11 root fallback context, got %v", err)
 	}
 }
 
-func TestInteractiveScreenshotDoesNotFallbackToPipewire(t *testing.T) {
+func TestInteractiveScreenshotDoesNotFallbackToX11Root(t *testing.T) {
 	t.Helper()
+	t.Setenv("XDG_SESSION_TYPE", "x11")
+	t.Setenv("WAYLAND_DISPLAY", "")
 
 	prevPortal := portalScreenshotFn
-	prevPipewire := pipewireScreenshotFn
+	prevX11Root := x11RootScreenshotFn
 	t.Cleanup(func() {
 		portalScreenshotFn = prevPortal
-		pipewireScreenshotFn = prevPipewire
+		x11RootScreenshotFn = prevX11Root
 	})
 
 	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
@@ -172,18 +180,90 @@ func TestInteractiveScreenshotDoesNotFallbackToPipewire(t *testing.T) {
 		return nil, portalErr
 	}
 
-	pipewireCalled := false
-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
-		pipewireCalled = true
-		return nil, errors.New("pipewire should not be used")
+	x11RootCalled := false
+	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
+		x11RootCalled = true
+		return nil, errors.New("X11 root should not be used")
 	}
 
 	_, err := Region(Options{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	if pipewireCalled {
-		t.Fatalf("did not expect pipewire fallback for interactive capture")
+	if x11RootCalled {
+		t.Fatalf("did not expect X11 root fallback for interactive capture")
+	}
+	var dbusErr *dbus.Error
+	if !errors.As(err, &dbusErr) {
+		t.Fatalf("expected wrapped portal error, got %v", err)
+	}
+}
+
+func TestScreenshotDoesNotFallbackOnWayland(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_SESSION_TYPE", "wayland")
+	t.Setenv("WAYLAND_DISPLAY", "")
+
+	prevPortal := portalScreenshotFn
+	prevX11Root := x11RootScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+		x11RootScreenshotFn = prevX11Root
+	})
+
+	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
+		return nil, portalErr
+	}
+
+	x11RootCalled := false
+	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
+		x11RootCalled = true
+		return nil, errors.New("X11 root should not be used on Wayland")
+	}
+
+	_, err := Screenshot("", Options{})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if x11RootCalled {
+		t.Fatalf("did not expect X11 root fallback on Wayland")
+	}
+	var dbusErr *dbus.Error
+	if !errors.As(err, &dbusErr) {
+		t.Fatalf("expected wrapped portal error, got %v", err)
+	}
+}
+
+func TestScreenshotDoesNotFallbackOnWaylandDisplay(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_SESSION_TYPE", "")
+	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
+
+	prevPortal := portalScreenshotFn
+	prevX11Root := x11RootScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+		x11RootScreenshotFn = prevX11Root
+	})
+
+	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
+		return nil, portalErr
+	}
+
+	x11RootCalled := false
+	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
+		x11RootCalled = true
+		return nil, errors.New("X11 root should not be used on Wayland")
+	}
+
+	_, err := Screenshot("", Options{})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if x11RootCalled {
+		t.Fatalf("did not expect X11 root fallback on Wayland")
 	}
 	var dbusErr *dbus.Error
 	if !errors.As(err, &dbusErr) {

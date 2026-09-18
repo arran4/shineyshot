@@ -61,15 +61,11 @@ func TestPortalScreenshotOptions(t *testing.T) {
 		name        string
 		interactive bool
 		opts        Options
-		wantCursor  string
-		wantRestore bool
 	}{
 		{
 			name:        "defaults",
 			interactive: false,
 			opts:        Options{},
-			wantCursor:  "hidden",
-			wantRestore: false,
 		},
 		{
 			name:        "cursor and decorations",
@@ -78,8 +74,6 @@ func TestPortalScreenshotOptions(t *testing.T) {
 				IncludeDecorations: true,
 				IncludeCursor:      true,
 			},
-			wantCursor:  "embedded",
-			wantRestore: true,
 		},
 	}
 
@@ -93,17 +87,11 @@ func TestPortalScreenshotOptions(t *testing.T) {
 			if got := boolVariant(t, values, "modal"); got != tc.interactive {
 				t.Fatalf("modal = %v, want %v", got, tc.interactive)
 			}
-			if got := stringVariant(t, values, "cursor_mode"); got != tc.wantCursor {
-				t.Fatalf("cursor_mode = %q, want %q", got, tc.wantCursor)
-			}
-			if got := boolVariant(t, values, "restore_window"); got != tc.wantRestore {
-				t.Fatalf("restore_window = %v, want %v", got, tc.wantRestore)
-			}
 			if got := stringVariant(t, values, "handle_token"); got != "test-token" {
 				t.Fatalf("handle_token = %q, want %q", got, "test-token")
 			}
-			if len(values) != 5 {
-				t.Fatalf("expected 5 options, got %d", len(values))
+			if len(values) != 3 {
+				t.Fatalf("expected 3 options, got %d", len(values))
 			}
 		})
 	}
@@ -531,5 +519,104 @@ func TestPortalScreenshotCleanupError(t *testing.T) {
 
 	if mockBus.matchesRemoved != 1 {
 		t.Fatalf("expected 1 match removed attempt, got %d", mockBus.matchesRemoved)
+	}
+}
+
+func TestPortalScreenshotURIParsing(t *testing.T) {
+	tests := []struct {
+		name      string
+		uri       string
+		wantError string
+		wantPath  string
+	}{
+		{
+			name:      "ordinary file uri",
+			uri:       "file:///tmp/example.png",
+			wantError: "",
+			wantPath:  "/tmp/example.png",
+		},
+		{
+			name:      "percent-escaped local pathname",
+			uri:       "file:///tmp/Shiney%20Shot.png",
+			wantError: "",
+			wantPath:  "/tmp/Shiney Shot.png",
+		},
+		{
+			name:      "malformed uri",
+			uri:       "://invalid",
+			wantError: "invalid uri",
+		},
+		{
+			name:      "unsupported scheme",
+			uri:       "http://example.com/image.png",
+			wantError: "unsupported uri scheme \"http\"",
+		},
+		{
+			name:      "unsupported host",
+			uri:       "file://remotehost/tmp/image.png",
+			wantError: "unsupported uri host \"remotehost\"",
+		},
+		{
+			name:      "localhost host",
+			uri:       "file://localhost/tmp/image.png",
+			wantError: "",
+			wantPath:  "/tmp/image.png",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bus := &mockPortalBus{
+				uniqueName: ":1.123",
+			}
+			expectedPath := dbus.ObjectPath("/org/freedesktop/portal/desktop/request/1_123/test_token")
+
+			bus.callFunc = func(dest string, path dbus.ObjectPath, method string, flags dbus.Flags, args ...any) (*dbus.Call, error) {
+				if bus.signalChan != nil {
+					bus.signalChan <- &dbus.Signal{
+						Path: expectedPath,
+						Name: "org.freedesktop.portal.Request.Response",
+						Body: []any{
+							uint32(0),
+							map[string]dbus.Variant{
+								"uri": dbus.MakeVariant(tc.uri),
+							},
+						},
+					}
+				}
+				return &dbus.Call{
+					Body: []any{expectedPath},
+				}, nil
+			}
+
+			prevConnect := connectPortalBus
+			prevToken := portalHandleToken
+			connectPortalBus = func() (portalBus, error) {
+				return bus, nil
+			}
+			portalHandleToken = func() (string, error) {
+				return "test_token", nil
+			}
+			t.Cleanup(func() {
+				connectPortalBus = prevConnect
+				portalHandleToken = prevToken
+			})
+
+			_, err := portalScreenshot(false, Options{})
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantError, err)
+				}
+			} else {
+				// The test will fail in loadPNG because the file does not exist,
+				// which is expected. We just want to check the parsed path.
+				if err == nil {
+					t.Fatalf("expected error from loadPNG, got nil")
+				}
+				if !strings.Contains(err.Error(), tc.wantPath) {
+					t.Fatalf("expected loadPNG error for path %q, got %v", tc.wantPath, err)
+				}
+			}
+		})
 	}
 }

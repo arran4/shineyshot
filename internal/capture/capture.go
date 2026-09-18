@@ -21,10 +21,10 @@ type Options struct {
 }
 
 var (
-	portalCapture        = portalScreenshot
-	portalScreenshotFn   = portalCapture
-	pipewireCapture      = pipewireScreenshot
-	pipewireScreenshotFn = pipewireCapture
+	portalCapture       = portalScreenshot
+	portalScreenshotFn  = portalCapture
+	x11RootCapture      = x11RootScreenshot
+	x11RootScreenshotFn = x11RootCapture
 )
 
 func screenshot(interactive bool, opts Options) (*image.RGBA, error) {
@@ -35,9 +35,12 @@ func screenshot(interactive bool, opts Options) (*image.RGBA, error) {
 	if interactive || !isPortalUnsupportedError(err) {
 		return nil, err
 	}
-	fallback, fallbackErr := pipewireScreenshotFn(opts)
+	if runningOnWayland() {
+		return nil, err
+	}
+	fallback, fallbackErr := x11RootScreenshotFn(opts)
 	if fallbackErr != nil {
-		return nil, errors.Join(err, fmt.Errorf("pipewire fallback: %w", fallbackErr))
+		return nil, errors.Join(err, fmt.Errorf("X11 root fallback: %w", fallbackErr))
 	}
 	return fallback, nil
 }
