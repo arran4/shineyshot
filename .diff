@@ -1,0 +1,630 @@
+diff --git a/internal/capture/capture.go b/internal/capture/capture.go
+index fcd2f46..7d7e380 100644
+--- a/internal/capture/capture.go
++++ b/internal/capture/capture.go
+@@ -13,18 +13,22 @@ var ErrCancelled = errors.New("capture cancelled")
+ // Options describes optional preferences when capturing screenshots.
+ type Options struct {
+	// IncludeDecorations requests that window captures include decorations when
+-	// available. Support depends on the compositor and platform backend.
++	// available. This is a best-effort preference. The generic Screenshot
++	// portal cannot request or guarantee them; outcomes depend on the chosen
++	// backend or compositor.
+	IncludeDecorations bool
+	// IncludeCursor requests that the cursor be embedded into the captured
+-	// image. Support depends on the compositor and platform backend.
++	// image. This is a best-effort preference. The generic Screenshot
++	// portal cannot request or guarantee it; outcomes depend on the chosen
++	// backend or compositor.
+	IncludeCursor bool
+ }
+
+ var (
+-	portalCapture        = portalScreenshot
+-	portalScreenshotFn   = portalCapture
+-	pipewireCapture      = pipewireScreenshot
+-	pipewireScreenshotFn = pipewireCapture
++	portalCapture       = portalScreenshot
++	portalScreenshotFn  = portalCapture
++	x11RootCapture      = x11RootScreenshot
++	x11RootScreenshotFn = x11RootCapture
+ )
+
+ func screenshot(interactive bool, opts Options) (*image.RGBA, error) {
+@@ -35,9 +39,12 @@ func screenshot(interactive bool, opts Options) (*image.RGBA, error) {
+	if interactive || !isPortalUnsupportedError(err) {
+		return nil, err
+	}
+-	fallback, fallbackErr := pipewireScreenshotFn(opts)
++	if runningOnWayland() || !hasX11Display() {
++		return nil, err
++	}
++	fallback, fallbackErr := x11RootScreenshotFn(opts)
+	if fallbackErr != nil {
+-		return nil, errors.Join(err, fmt.Errorf("pipewire fallback: %w", fallbackErr))
++		return nil, errors.Join(err, fmt.Errorf("X11 root fallback: %w", fallbackErr))
+	}
+	return fallback, nil
+ }
+diff --git a/internal/capture/capture_test.go b/internal/capture/capture_test.go
+index 1343cee..2eb64bf 100644
+--- a/internal/capture/capture_test.go
++++ b/internal/capture/capture_test.go
+@@ -59,14 +59,17 @@ func TestWindowDetailedListWindowsError(t *testing.T) {
+	}
+ }
+
+-func TestScreenshotFallsBackToPipewire(t *testing.T) {
++func TestScreenshotFallsBackToX11Root(t *testing.T) {
+	t.Helper()
++	t.Setenv("XDG_SESSION_TYPE", "x11")
++	t.Setenv("WAYLAND_DISPLAY", "")
++	t.Setenv("DISPLAY", ":0")
+
+	prevPortal := portalScreenshotFn
+-	prevPipewire := pipewireScreenshotFn
++	prevX11Root := x11RootScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+-		pipewireScreenshotFn = prevPipewire
++		x11RootScreenshotFn = prevX11Root
+	})
+
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
+@@ -75,7 +78,7 @@ func TestScreenshotFallsBackToPipewire(t *testing.T) {
+
+	called := false
+	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
+-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
++	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
+		called = true
+		return want, nil
+	}
+@@ -85,21 +88,24 @@ func TestScreenshotFallsBackToPipewire(t *testing.T) {
+		t.Fatalf("Screenshot returned error: %v", err)
+	}
+	if !called {
+-		t.Fatalf("expected pipewire fallback to be used")
++		t.Fatalf("expected X11 root fallback to be used")
+	}
+	if got != want {
+-		t.Fatalf("expected pipewire result, got %#v", got)
++		t.Fatalf("expected X11 root result, got %#v", got)
+	}
+ }
+
+ func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
+	t.Helper()
++	t.Setenv("XDG_SESSION_TYPE", "x11")
++	t.Setenv("WAYLAND_DISPLAY", "")
++	t.Setenv("DISPLAY", ":0")
+
+	prevPortal := portalScreenshotFn
+-	prevPipewire := pipewireScreenshotFn
++	prevX11Root := x11RootScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+-		pipewireScreenshotFn = prevPipewire
++		x11RootScreenshotFn = prevX11Root
+	})
+
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
+@@ -108,7 +114,7 @@ func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
+
+	called := false
+	want := image.NewRGBA(image.Rect(0, 0, 1, 1))
+-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
++	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
+		called = true
+		return want, nil
+	}
+@@ -118,53 +124,59 @@ func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
+		t.Fatalf("Screenshot returned error: %v", err)
+	}
+	if !called {
+-		t.Fatalf("expected pipewire fallback to be used")
++		t.Fatalf("expected X11 root fallback to be used")
+	}
+	if got != want {
+-		t.Fatalf("expected pipewire result, got %#v", got)
++		t.Fatalf("expected X11 root result, got %#v", got)
+	}
+ }
+
+-func TestScreenshotFallbackPipewireFailure(t *testing.T) {
++func TestScreenshotFallbackX11RootFailure(t *testing.T) {
+	t.Helper()
++	t.Setenv("XDG_SESSION_TYPE", "x11")
++	t.Setenv("WAYLAND_DISPLAY", "")
++	t.Setenv("DISPLAY", ":0")
+
+	prevPortal := portalScreenshotFn
+-	prevPipewire := pipewireScreenshotFn
++	prevX11Root := x11RootScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+-		pipewireScreenshotFn = prevPipewire
++		x11RootScreenshotFn = prevX11Root
+	})
+
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
+		return nil, &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
+	}
+
+-	pipewireCalled := false
+-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
+-		pipewireCalled = true
+-		return nil, errors.New("pipewire unavailable")
++	x11RootCalled := false
++	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
++		x11RootCalled = true
++		return nil, errors.New("X11 root unavailable")
+	}
+
+	_, err := Screenshot("", Options{})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+-	if !pipewireCalled {
+-		t.Fatalf("expected pipewire fallback to be attempted")
++	if !x11RootCalled {
++		t.Fatalf("expected X11 root fallback to be attempted")
+	}
+-	if !strings.Contains(err.Error(), "pipewire fallback") {
+-		t.Fatalf("expected pipewire fallback context, got %v", err)
++	if !strings.Contains(err.Error(), "X11 root fallback") {
++		t.Fatalf("expected X11 root fallback context, got %v", err)
+	}
+ }
+
+-func TestInteractiveScreenshotDoesNotFallbackToPipewire(t *testing.T) {
++func TestInteractiveScreenshotDoesNotFallbackToX11Root(t *testing.T) {
+	t.Helper()
++	t.Setenv("XDG_SESSION_TYPE", "x11")
++	t.Setenv("WAYLAND_DISPLAY", "")
++	t.Setenv("DISPLAY", ":0")
+
+	prevPortal := portalScreenshotFn
+-	prevPipewire := pipewireScreenshotFn
++	prevX11Root := x11RootScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+-		pipewireScreenshotFn = prevPipewire
++		x11RootScreenshotFn = prevX11Root
+	})
+
+	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
+@@ -172,21 +184,132 @@ func TestInteractiveScreenshotDoesNotFallbackToPipewire(t *testing.T) {
+		return nil, portalErr
+	}
+
+-	pipewireCalled := false
+-	pipewireScreenshotFn = func(Options) (*image.RGBA, error) {
+-		pipewireCalled = true
+-		return nil, errors.New("pipewire should not be used")
++	x11RootCalled := false
++	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
++		x11RootCalled = true
++		return nil, errors.New("X11 root should not be used")
+	}
+
+	_, err := Region(Options{})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+-	if pipewireCalled {
+-		t.Fatalf("did not expect pipewire fallback for interactive capture")
++	if x11RootCalled {
++		t.Fatalf("did not expect X11 root fallback for interactive capture")
+	}
+	var dbusErr *dbus.Error
+	if !errors.As(err, &dbusErr) {
+		t.Fatalf("expected wrapped portal error, got %v", err)
+	}
+ }
++
++func TestScreenshotDoesNotFallbackOnWayland(t *testing.T) {
++	t.Helper()
++	t.Setenv("XDG_SESSION_TYPE", "wayland")
++	t.Setenv("WAYLAND_DISPLAY", "")
++	t.Setenv("DISPLAY", "")
++
++	prevPortal := portalScreenshotFn
++	prevX11Root := x11RootScreenshotFn
++	t.Cleanup(func() {
++		portalScreenshotFn = prevPortal
++		x11RootScreenshotFn = prevX11Root
++	})
++
++	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
++	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
++		return nil, portalErr
++	}
++
++	x11RootCalled := false
++	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
++		x11RootCalled = true
++		return nil, errors.New("X11 root should not be used on Wayland")
++	}
++
++	_, err := Screenshot("", Options{})
++	if err == nil {
++		t.Fatalf("expected error")
++	}
++	if x11RootCalled {
++		t.Fatalf("did not expect X11 root fallback on Wayland")
++	}
++	var dbusErr *dbus.Error
++	if !errors.As(err, &dbusErr) {
++		t.Fatalf("expected wrapped portal error, got %v", err)
++	}
++}
++
++func TestScreenshotDoesNotFallbackOnWaylandDisplay(t *testing.T) {
++	t.Helper()
++	t.Setenv("XDG_SESSION_TYPE", "wayland")
++	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
++	t.Setenv("DISPLAY", ":0")
++
++	prevPortal := portalScreenshotFn
++	prevX11Root := x11RootScreenshotFn
++	t.Cleanup(func() {
++		portalScreenshotFn = prevPortal
++		x11RootScreenshotFn = prevX11Root
++	})
++
++	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
++	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
++		return nil, portalErr
++	}
++
++	x11RootCalled := false
++	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
++		x11RootCalled = true
++		return nil, errors.New("X11 root should not be used on Wayland")
++	}
++
++	_, err := Screenshot("", Options{})
++	if err == nil {
++		t.Fatalf("expected error")
++	}
++	if x11RootCalled {
++		t.Fatalf("did not expect X11 root fallback on Wayland")
++	}
++	var dbusErr *dbus.Error
++	if !errors.As(err, &dbusErr) {
++		t.Fatalf("expected wrapped portal error, got %v", err)
++	}
++}
++
++func TestScreenshotX11RootFailureWhenDisplayMissing(t *testing.T) {
++	t.Helper()
++	t.Setenv("XDG_SESSION_TYPE", "x11")
++	t.Setenv("WAYLAND_DISPLAY", "")
++	t.Setenv("DISPLAY", "")
++
++	prevPortal := portalScreenshotFn
++	prevX11Root := x11RootScreenshotFn
++	t.Cleanup(func() {
++		portalScreenshotFn = prevPortal
++		x11RootScreenshotFn = prevX11Root
++	})
++
++	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
++	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
++		return nil, portalErr
++	}
++
++	x11RootCalled := false
++	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
++		x11RootCalled = true
++		return nil, errors.New("X11 root should not be used when DISPLAY is missing")
++	}
++
++	_, err := Screenshot("", Options{})
++	if err == nil {
++		t.Fatalf("expected error")
++	}
++	if x11RootCalled {
++		t.Fatalf("did not expect X11 root fallback when DISPLAY is missing")
++	}
++	var dbusErr *dbus.Error
++	if !errors.As(err, &dbusErr) {
++		t.Fatalf("expected wrapped portal error to be preserved, got %v", err)
++	}
++}
+diff --git a/internal/capture/platform_stub.go b/internal/capture/platform_stub.go
+index 90884cb..c9b8a67 100644
+--- a/internal/capture/platform_stub.go
++++ b/internal/capture/platform_stub.go
+@@ -26,3 +26,4 @@ func (unsupportedBackend) CaptureWindowImage(uint32) (*image.RGBA, error) {
+ }
+
+ func runningOnWayland() bool { return false }
++func hasX11Display() bool    { return false }
+diff --git a/internal/capture/platform_unix.go b/internal/capture/platform_unix.go
+index 40d2612..dc361c9 100644
+--- a/internal/capture/platform_unix.go
++++ b/internal/capture/platform_unix.go
+@@ -32,6 +32,10 @@ func runningOnWayland() bool {
+	return false
+ }
+
++func hasX11Display() bool {
++	return os.Getenv("DISPLAY") != ""
++}
++
+ func (x11Backend) ListMonitors() ([]MonitorInfo, error) {
+	conn, err := xgb.NewConn()
+	if err != nil {
+diff --git a/internal/capture/portal_unix.go b/internal/capture/portal_unix.go
+index 51ca3c7..709869d 100644
+--- a/internal/capture/portal_unix.go
++++ b/internal/capture/portal_unix.go
+@@ -10,6 +10,7 @@ import (
+	"image"
+	"image/draw"
+	"image/png"
++	"net/url"
+	"os"
+	"strings"
+
+@@ -176,8 +177,18 @@ func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error
+				return nil, fmt.Errorf("portal screenshot: malformed uri, expected string, got %T", uriVar.Value())
+			}
+
+-			path := strings.TrimPrefix(uri, "file://")
+-			img, err := loadPNG(path)
++			parsedURI, err := url.Parse(uri)
++			if err != nil {
++				return nil, fmt.Errorf("portal screenshot: invalid uri %q: %w", uri, err)
++			}
++			if parsedURI.Scheme != "file" {
++				return nil, fmt.Errorf("portal screenshot: unsupported uri scheme %q in %q", parsedURI.Scheme, uri)
++			}
++			if parsedURI.Host != "" && parsedURI.Host != "localhost" {
++				return nil, fmt.Errorf("portal screenshot: unsupported uri host %q in %q", parsedURI.Host, uri)
++			}
++
++			img, err := loadPNG(parsedURI.Path)
+			if err != nil {
+				return nil, fmt.Errorf("portal screenshot image: %w", err)
+			}
+@@ -222,16 +233,11 @@ func newPortalHandleToken() (string, error) {
+ }
+
+ func portalScreenshotOptions(interactive bool, captureOpts Options, token string) map[string]dbus.Variant {
+-	cursorMode := "hidden"
+-	if captureOpts.IncludeCursor {
+-		cursorMode = "embedded"
+-	}
++	_ = captureOpts // captureOpts is not used for portable screenshot options
+	return map[string]dbus.Variant{
+-		"interactive":    dbus.MakeVariant(interactive),
+-		"handle_token":   dbus.MakeVariant(token),
+-		"modal":          dbus.MakeVariant(interactive),
+-		"cursor_mode":    dbus.MakeVariant(cursorMode),
+-		"restore_window": dbus.MakeVariant(captureOpts.IncludeDecorations),
++		"interactive":  dbus.MakeVariant(interactive),
++		"handle_token": dbus.MakeVariant(token),
++		"modal":        dbus.MakeVariant(interactive),
+	}
+ }
+
+diff --git a/internal/capture/portal_unix_test.go b/internal/capture/portal_unix_test.go
+index 474ab8b..f5c3577 100644
+--- a/internal/capture/portal_unix_test.go
++++ b/internal/capture/portal_unix_test.go
+@@ -4,6 +4,10 @@ package capture
+
+ import (
+	"errors"
++	"image"
++	"image/png"
++	"os"
++	"path/filepath"
+	"strings"
+	"testing"
+
+@@ -61,15 +65,11 @@ func TestPortalScreenshotOptions(t *testing.T) {
+		name        string
+		interactive bool
+		opts        Options
+-		wantCursor  string
+-		wantRestore bool
+	}{
+		{
+			name:        "defaults",
+			interactive: false,
+			opts:        Options{},
+-			wantCursor:  "hidden",
+-			wantRestore: false,
+		},
+		{
+			name:        "cursor and decorations",
+@@ -78,8 +78,6 @@ func TestPortalScreenshotOptions(t *testing.T) {
+				IncludeDecorations: true,
+				IncludeCursor:      true,
+			},
+-			wantCursor:  "embedded",
+-			wantRestore: true,
+		},
+	}
+
+@@ -93,17 +91,11 @@ func TestPortalScreenshotOptions(t *testing.T) {
+			if got := boolVariant(t, values, "modal"); got != tc.interactive {
+				t.Fatalf("modal = %v, want %v", got, tc.interactive)
+			}
+-			if got := stringVariant(t, values, "cursor_mode"); got != tc.wantCursor {
+-				t.Fatalf("cursor_mode = %q, want %q", got, tc.wantCursor)
+-			}
+-			if got := boolVariant(t, values, "restore_window"); got != tc.wantRestore {
+-				t.Fatalf("restore_window = %v, want %v", got, tc.wantRestore)
+-			}
+			if got := stringVariant(t, values, "handle_token"); got != "test-token" {
+				t.Fatalf("handle_token = %q, want %q", got, "test-token")
+			}
+-			if len(values) != 5 {
+-				t.Fatalf("expected 5 options, got %d", len(values))
++			if len(values) != 3 {
++				t.Fatalf("expected 3 options, got %d", len(values))
+			}
+		})
+	}
+@@ -533,3 +525,124 @@ func TestPortalScreenshotCleanupError(t *testing.T) {
+		t.Fatalf("expected 1 match removed attempt, got %d", mockBus.matchesRemoved)
+	}
+ }
++
++func TestPortalScreenshotURIParsing(t *testing.T) {
++	tempDir := t.TempDir()
++	path1 := filepath.Join(tempDir, "example.png")
++	path2 := filepath.Join(tempDir, "Shiney Shot.png")
++
++	// Create tiny PNGs
++	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
++	writePNG := func(p string) {
++		f, err := os.Create(p)
++		if err != nil {
++			t.Fatalf("failed to create temp png %q: %v", p, err)
++		}
++		defer f.Close()
++		if err := png.Encode(f, img); err != nil {
++			t.Fatalf("failed to encode png to %q: %v", p, err)
++		}
++	}
++	writePNG(path1)
++	writePNG(path2)
++
++	tests := []struct {
++		name      string
++		uri       string
++		wantError string
++		wantPath  string
++	}{
++		{
++			name:      "ordinary file uri",
++			uri:       "file://" + path1,
++			wantError: "",
++			wantPath:  path1,
++		},
++		{
++			name:      "percent-escaped local pathname",
++			uri:       "file://" + strings.ReplaceAll(path2, " ", "%20"),
++			wantError: "",
++			wantPath:  path2,
++		},
++		{
++			name:      "malformed uri",
++			uri:       "://invalid",
++			wantError: "invalid uri",
++		},
++		{
++			name:      "unsupported scheme",
++			uri:       "http://example.com/image.png",
++			wantError: "unsupported uri scheme \"http\"",
++		},
++		{
++			name:      "unsupported host",
++			uri:       "file://remotehost/tmp/image.png",
++			wantError: "unsupported uri host \"remotehost\"",
++		},
++		{
++			name:      "localhost host",
++			uri:       "file://localhost" + path1,
++			wantError: "",
++			wantPath:  path1,
++		},
++	}
++
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			// Write the file again just in case previous runs deleted it (since loadPNG removes the file)
++			if tc.wantPath != "" {
++				writePNG(tc.wantPath)
++			}
++
++			bus := &mockPortalBus{
++				uniqueName: ":1.123",
++			}
++			expectedPath := dbus.ObjectPath("/org/freedesktop/portal/desktop/request/1_123/test_token")
++
++			bus.callFunc = func(dest string, path dbus.ObjectPath, method string, flags dbus.Flags, args ...any) (*dbus.Call, error) {
++				if bus.signalChan != nil {
++					bus.signalChan <- &dbus.Signal{
++						Path: expectedPath,
++						Name: "org.freedesktop.portal.Request.Response",
++						Body: []any{
++							uint32(0),
++							map[string]dbus.Variant{
++								"uri": dbus.MakeVariant(tc.uri),
++							},
++						},
++					}
++				}
++				return &dbus.Call{
++					Body: []any{expectedPath},
++				}, nil
++			}
++
++			prevConnect := connectPortalBus
++			prevToken := portalHandleToken
++			connectPortalBus = func() (portalBus, error) {
++				return bus, nil
++			}
++			portalHandleToken = func() (string, error) {
++				return "test_token", nil
++			}
++			t.Cleanup(func() {
++				connectPortalBus = prevConnect
++				portalHandleToken = prevToken
++			})
++
++			res, err := portalScreenshot(false, Options{})
++			if tc.wantError != "" {
++				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
++					t.Fatalf("expected error containing %q, got %v", tc.wantError, err)
++				}
++			} else {
++				if err != nil {
++					t.Fatalf("expected success, got error: %v", err)
++				}
++				if res == nil {
++					t.Fatalf("expected image, got nil")
++				}
++			}
++		})
++	}
++}
+diff --git a/internal/capture/pipewire_stub.go b/internal/capture/x11_root_stub.go
+similarity index 52%
+rename from internal/capture/pipewire_stub.go
+rename to internal/capture/x11_root_stub.go
+index c7c6c02..6fe7afd 100644
+--- a/internal/capture/pipewire_stub.go
++++ b/internal/capture/x11_root_stub.go
+@@ -7,6 +7,6 @@ import (
+	"image"
+ )
+
+-func pipewireScreenshot(Options) (*image.RGBA, error) {
+-	return nil, fmt.Errorf("pipewire screenshot is not supported on this platform")
++func x11RootScreenshot(Options) (*image.RGBA, error) {
++	return nil, fmt.Errorf("x11 root screenshot is not supported on this platform")
+ }
+diff --git a/internal/capture/pipewire.go b/internal/capture/x11_root_unix.go
+similarity index 94%
+rename from internal/capture/pipewire.go
+rename to internal/capture/x11_root_unix.go
+index 9ff0e90..970e261 100644
+--- a/internal/capture/pipewire.go
++++ b/internal/capture/x11_root_unix.go
+@@ -10,7 +10,7 @@ import (
+	"github.com/jezek/xgb/xproto"
+ )
+
+-func pipewireScreenshot(opts Options) (*image.RGBA, error) {
++func x11RootScreenshot(opts Options) (*image.RGBA, error) {
+	_ = opts
+	conn, err := xgb.NewConn()
+	if err != nil {
