@@ -284,26 +284,32 @@ func TestScreenshotX11RootFailureWhenDisplayMissing(t *testing.T) {
 	t.Setenv("DISPLAY", "")
 
 	prevPortal := portalScreenshotFn
-	// Let x11RootScreenshotFn use the real x11RootScreenshot to test connection-time failure
 	prevX11Root := x11RootScreenshotFn
 	t.Cleanup(func() {
 		portalScreenshotFn = prevPortal
 		x11RootScreenshotFn = prevX11Root
 	})
 
-	// Real fallback behavior will be attempted
-	x11RootScreenshotFn = x11RootCapture
-
+	portalErr := &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
 	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
-		return nil, &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
+		return nil, portalErr
+	}
+
+	x11RootCalled := false
+	x11RootScreenshotFn = func(Options) (*image.RGBA, error) {
+		x11RootCalled = true
+		return nil, errors.New("X11 root should not be used when DISPLAY is missing")
 	}
 
 	_, err := Screenshot("", Options{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	// The fallback should fail at connection time because DISPLAY is not set
-	if !strings.Contains(err.Error(), "X11 root fallback: connect X server") {
-		t.Fatalf("expected connection failure due to missing DISPLAY, got %v", err)
+	if x11RootCalled {
+		t.Fatalf("did not expect X11 root fallback when DISPLAY is missing")
+	}
+	var dbusErr *dbus.Error
+	if !errors.As(err, &dbusErr) {
+		t.Fatalf("expected wrapped portal error to be preserved, got %v", err)
 	}
 }

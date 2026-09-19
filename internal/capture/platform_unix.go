@@ -32,6 +32,10 @@ func runningOnWayland() bool {
 	return false
 }
 
+func hasX11Display() bool {
+	return os.Getenv("DISPLAY") != ""
+}
+
 func (x11Backend) ListMonitors() ([]MonitorInfo, error) {
 	conn, err := xgb.NewConn()
 	if err != nil {

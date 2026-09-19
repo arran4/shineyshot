@@ -13,12 +13,12 @@ var ErrCancelled = errors.New("capture cancelled")
 // Options describes optional preferences when capturing screenshots.
 type Options struct {
 	// IncludeDecorations requests that window captures include decorations when
-	// available. This is a best-effort preference. The generic generic Screenshot
+	// available. This is a best-effort preference. The generic Screenshot
 	// portal cannot request or guarantee them; outcomes depend on the chosen
 	// backend or compositor.
 	IncludeDecorations bool
 	// IncludeCursor requests that the cursor be embedded into the captured
-	// image. This is a best-effort preference. The generic generic Screenshot
+	// image. This is a best-effort preference. The generic Screenshot
 	// portal cannot request or guarantee it; outcomes depend on the chosen
 	// backend or compositor.
 	IncludeCursor bool
@@ -39,7 +39,7 @@ func screenshot(interactive bool, opts Options) (*image.RGBA, error) {
 	if interactive || !isPortalUnsupportedError(err) {
 		return nil, err
 	}
-	if runningOnWayland() {
+	if runningOnWayland() || !hasX11Display() {
 		return nil, err
 	}
 	fallback, fallbackErr := x11RootScreenshotFn(opts)
