@@ -4,6 +4,10 @@ package capture
 
 import (
 	"errors"
+	"image"
+	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -523,6 +527,25 @@ func TestPortalScreenshotCleanupError(t *testing.T) {
 }
 
 func TestPortalScreenshotURIParsing(t *testing.T) {
+	tempDir := t.TempDir()
+	path1 := filepath.Join(tempDir, "example.png")
+	path2 := filepath.Join(tempDir, "Shiney Shot.png")
+
+	// Create tiny PNGs
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	writePNG := func(p string) {
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatalf("failed to create temp png %q: %v", p, err)
+		}
+		defer f.Close()
+		if err := png.Encode(f, img); err != nil {
+			t.Fatalf("failed to encode png to %q: %v", p, err)
+		}
+	}
+	writePNG(path1)
+	writePNG(path2)
+
 	tests := []struct {
 		name      string
 		uri       string
@@ -531,15 +554,15 @@ func TestPortalScreenshotURIParsing(t *testing.T) {
 	}{
 		{
 			name:      "ordinary file uri",
-			uri:       "file:///tmp/example.png",
+			uri:       "file://" + path1,
 			wantError: "",
-			wantPath:  "/tmp/example.png",
+			wantPath:  path1,
 		},
 		{
 			name:      "percent-escaped local pathname",
-			uri:       "file:///tmp/Shiney%20Shot.png",
+			uri:       "file://" + strings.ReplaceAll(path2, " ", "%20"),
 			wantError: "",
-			wantPath:  "/tmp/Shiney Shot.png",
+			wantPath:  path2,
 		},
 		{
 			name:      "malformed uri",
@@ -558,14 +581,19 @@ func TestPortalScreenshotURIParsing(t *testing.T) {
 		},
 		{
 			name:      "localhost host",
-			uri:       "file://localhost/tmp/image.png",
+			uri:       "file://localhost" + path1,
 			wantError: "",
-			wantPath:  "/tmp/image.png",
+			wantPath:  path1,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// Write the file again just in case previous runs deleted it (since loadPNG removes the file)
+			if tc.wantPath != "" {
+				writePNG(tc.wantPath)
+			}
+
 			bus := &mockPortalBus{
 				uniqueName: ":1.123",
 			}
@@ -602,19 +630,17 @@ func TestPortalScreenshotURIParsing(t *testing.T) {
 				portalHandleToken = prevToken
 			})
 
-			_, err := portalScreenshot(false, Options{})
+			res, err := portalScreenshot(false, Options{})
 			if tc.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 					t.Fatalf("expected error containing %q, got %v", tc.wantError, err)
 				}
 			} else {
-				// The test will fail in loadPNG because the file does not exist,
-				// which is expected. We just want to check the parsed path.
-				if err == nil {
-					t.Fatalf("expected error from loadPNG, got nil")
+				if err != nil {
+					t.Fatalf("expected success, got error: %v", err)
 				}
-				if !strings.Contains(err.Error(), tc.wantPath) {
-					t.Fatalf("expected loadPNG error for path %q, got %v", tc.wantPath, err)
+				if res == nil {
+					t.Fatalf("expected image, got nil")
 				}
 			}
 		})

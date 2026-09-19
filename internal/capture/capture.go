@@ -13,10 +13,14 @@ var ErrCancelled = errors.New("capture cancelled")
 // Options describes optional preferences when capturing screenshots.
 type Options struct {
 	// IncludeDecorations requests that window captures include decorations when
-	// available. Support depends on the compositor and platform backend.
+	// available. This is a best-effort preference. The generic generic Screenshot
+	// portal cannot request or guarantee them; outcomes depend on the chosen
+	// backend or compositor.
 	IncludeDecorations bool
 	// IncludeCursor requests that the cursor be embedded into the captured
-	// image. Support depends on the compositor and platform backend.
+	// image. This is a best-effort preference. The generic generic Screenshot
+	// portal cannot request or guarantee it; outcomes depend on the chosen
+	// backend or compositor.
 	IncludeCursor bool
 }
 

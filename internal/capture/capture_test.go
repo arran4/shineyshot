@@ -63,6 +63,7 @@ func TestScreenshotFallsBackToX11Root(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_SESSION_TYPE", "x11")
 	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":0")
 
 	prevPortal := portalScreenshotFn
 	prevX11Root := x11RootScreenshotFn
@@ -98,6 +99,7 @@ func TestScreenshotFallsBackWhenPortalDisconnects(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_SESSION_TYPE", "x11")
 	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":0")
 
 	prevPortal := portalScreenshotFn
 	prevX11Root := x11RootScreenshotFn
@@ -133,6 +135,7 @@ func TestScreenshotFallbackX11RootFailure(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_SESSION_TYPE", "x11")
 	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":0")
 
 	prevPortal := portalScreenshotFn
 	prevX11Root := x11RootScreenshotFn
@@ -167,6 +170,7 @@ func TestInteractiveScreenshotDoesNotFallbackToX11Root(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_SESSION_TYPE", "x11")
 	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", ":0")
 
 	prevPortal := portalScreenshotFn
 	prevX11Root := x11RootScreenshotFn
@@ -203,6 +207,7 @@ func TestScreenshotDoesNotFallbackOnWayland(t *testing.T) {
 	t.Helper()
 	t.Setenv("XDG_SESSION_TYPE", "wayland")
 	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", "")
 
 	prevPortal := portalScreenshotFn
 	prevX11Root := x11RootScreenshotFn
@@ -237,8 +242,9 @@ func TestScreenshotDoesNotFallbackOnWayland(t *testing.T) {
 
 func TestScreenshotDoesNotFallbackOnWaylandDisplay(t *testing.T) {
 	t.Helper()
-	t.Setenv("XDG_SESSION_TYPE", "")
+	t.Setenv("XDG_SESSION_TYPE", "wayland")
 	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
+	t.Setenv("DISPLAY", ":0")
 
 	prevPortal := portalScreenshotFn
 	prevX11Root := x11RootScreenshotFn
@@ -268,5 +274,36 @@ func TestScreenshotDoesNotFallbackOnWaylandDisplay(t *testing.T) {
 	var dbusErr *dbus.Error
 	if !errors.As(err, &dbusErr) {
 		t.Fatalf("expected wrapped portal error, got %v", err)
+	}
+}
+
+func TestScreenshotX11RootFailureWhenDisplayMissing(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_SESSION_TYPE", "x11")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DISPLAY", "")
+
+	prevPortal := portalScreenshotFn
+	// Let x11RootScreenshotFn use the real x11RootScreenshot to test connection-time failure
+	prevX11Root := x11RootScreenshotFn
+	t.Cleanup(func() {
+		portalScreenshotFn = prevPortal
+		x11RootScreenshotFn = prevX11Root
+	})
+
+	// Real fallback behavior will be attempted
+	x11RootScreenshotFn = x11RootCapture
+
+	portalScreenshotFn = func(bool, Options) (*image.RGBA, error) {
+		return nil, &dbus.Error{Name: "org.freedesktop.portal.Error.NotSupported"}
+	}
+
+	_, err := Screenshot("", Options{})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	// The fallback should fail at connection time because DISPLAY is not set
+	if !strings.Contains(err.Error(), "X11 root fallback: connect X server") {
+		t.Fatalf("expected connection failure due to missing DISPLAY, got %v", err)
 	}
 }
