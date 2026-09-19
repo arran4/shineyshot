@@ -10,6 +10,7 @@ import (
 	"image"
 	"image/draw"
 	"image/png"
+	"net/url"
 	"os"
 	"strings"
 
@@ -176,8 +177,18 @@ func portalScreenshot(interactive bool, captureOpts Options) (*image.RGBA, error
 				return nil, fmt.Errorf("portal screenshot: malformed uri, expected string, got %T", uriVar.Value())
 			}
 
-			path := strings.TrimPrefix(uri, "file://")
-			img, err := loadPNG(path)
+			parsedURI, err := url.Parse(uri)
+			if err != nil {
+				return nil, fmt.Errorf("portal screenshot: invalid uri %q: %w", uri, err)
+			}
+			if parsedURI.Scheme != "file" {
+				return nil, fmt.Errorf("portal screenshot: unsupported uri scheme %q in %q", parsedURI.Scheme, uri)
+			}
+			if parsedURI.Host != "" && parsedURI.Host != "localhost" {
+				return nil, fmt.Errorf("portal screenshot: unsupported uri host %q in %q", parsedURI.Host, uri)
+			}
+
+			img, err := loadPNG(parsedURI.Path)
 			if err != nil {
 				return nil, fmt.Errorf("portal screenshot image: %w", err)
 			}
@@ -222,16 +233,11 @@ func newPortalHandleToken() (string, error) {
 }
 
 func portalScreenshotOptions(interactive bool, captureOpts Options, token string) map[string]dbus.Variant {
-	cursorMode := "hidden"
-	if captureOpts.IncludeCursor {
-		cursorMode = "embedded"
-	}
+	_ = captureOpts // captureOpts is not used for portable screenshot options
 	return map[string]dbus.Variant{
-		"interactive":    dbus.MakeVariant(interactive),
-		"handle_token":   dbus.MakeVariant(token),
-		"modal":          dbus.MakeVariant(interactive),
-		"cursor_mode":    dbus.MakeVariant(cursorMode),
-		"restore_window": dbus.MakeVariant(captureOpts.IncludeDecorations),
+		"interactive":  dbus.MakeVariant(interactive),
+		"handle_token": dbus.MakeVariant(token),
+		"modal":        dbus.MakeVariant(interactive),
 	}
 }
 

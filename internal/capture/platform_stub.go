@@ -26,3 +26,4 @@ func (unsupportedBackend) CaptureWindowImage(uint32) (*image.RGBA, error) {
 }
 
 func runningOnWayland() bool { return false }
+func hasX11Display() bool    { return false }

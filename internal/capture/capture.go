@@ -13,18 +13,22 @@ var ErrCancelled = errors.New("capture cancelled")
 // Options describes optional preferences when capturing screenshots.
 type Options struct {
 	// IncludeDecorations requests that window captures include decorations when
-	// available. Support depends on the compositor and platform backend.
+	// available. This is a best-effort preference. The generic Screenshot
+	// portal cannot request or guarantee them; outcomes depend on the chosen
+	// backend or compositor.
 	IncludeDecorations bool
 	// IncludeCursor requests that the cursor be embedded into the captured
-	// image. Support depends on the compositor and platform backend.
+	// image. This is a best-effort preference. The generic Screenshot
+	// portal cannot request or guarantee it; outcomes depend on the chosen
+	// backend or compositor.
 	IncludeCursor bool
 }
 
 var (
-	portalCapture        = portalScreenshot
-	portalScreenshotFn   = portalCapture
-	pipewireCapture      = pipewireScreenshot
-	pipewireScreenshotFn = pipewireCapture
+	portalCapture       = portalScreenshot
+	portalScreenshotFn  = portalCapture
+	x11RootCapture      = x11RootScreenshot
+	x11RootScreenshotFn = x11RootCapture
 )
 
 func screenshot(interactive bool, opts Options) (*image.RGBA, error) {
@@ -35,9 +39,12 @@ func screenshot(interactive bool, opts Options) (*image.RGBA, error) {
 	if interactive || !isPortalUnsupportedError(err) {
 		return nil, err
 	}
-	fallback, fallbackErr := pipewireScreenshotFn(opts)
+	if runningOnWayland() || !hasX11Display() {
+		return nil, err
+	}
+	fallback, fallbackErr := x11RootScreenshotFn(opts)
 	if fallbackErr != nil {
-		return nil, errors.Join(err, fmt.Errorf("pipewire fallback: %w", fallbackErr))
+		return nil, errors.Join(err, fmt.Errorf("X11 root fallback: %w", fallbackErr))
 	}
 	return fallback, nil
 }
