@@ -538,9 +538,15 @@ func TestPortalScreenshotURIParsing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create temp png %q: %v", p, err)
 		}
-		defer f.Close()
-		if err := png.Encode(f, img); err != nil {
-			t.Fatalf("failed to encode png to %q: %v", p, err)
+
+		encodeErr := png.Encode(f, img)
+		closeErr := f.Close()
+
+		if encodeErr != nil {
+			t.Fatalf("failed to encode png to %q: %v", p, encodeErr)
+		}
+		if closeErr != nil {
+			t.Fatalf("failed to close temp png %q: %v", p, closeErr)
 		}
 	}
 	writePNG(path1)
