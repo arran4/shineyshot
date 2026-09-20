@@ -40,6 +40,8 @@ archives:
       # - goos: windows
       #   format: zip
     files:
+      - assets/shineyshot.desktop
+      - assets/icons/shineyshot.svg
       - README.md
       - docs/shineyshot.1
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "linux" }}Linux{{ else }}{{ title .Os }}{{ end }}_{{- if eq .Arch "386" }}i386{{ else if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}{{- with .Arm }}v{{ . }}{{ end }}'

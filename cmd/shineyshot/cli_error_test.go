@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/shineyshot/internal/capture"
+	"github.com/arran4/shineyshot/internal/capture"
 )
 
 func TestSnapshotRunCaptureError(t *testing.T) {

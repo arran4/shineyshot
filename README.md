@@ -37,6 +37,12 @@ go install ./cmd/shineyshot
 
 The final command places the compiled binary in `$(go env GOBIN)` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) so it is available on your `PATH`.
 
+Alternatively, if you've extracted a release archive or built the binary, you can use the provided `Makefile` to install the binary, desktop integration file, and icon to standard paths:
+
+```bash
+sudo make install PREFIX=/usr/local
+```
+
 ## Configuration
 
 ShineyShot supports a configuration file to persist your preferences. The configuration file follows a simple key-value format (RC style).
@@ -72,16 +78,17 @@ shineyshot config save -force
 
 ### File Format
 
-The configuration file supports global settings and sections for specific features like notifications and themes.
+The configuration file supports global settings and sections for specific features like notifications and themes. Desktop notifications are entirely disabled by default; you must explicitly opt in to enable them for capture, save, or copy events.
 
 ```ini
 theme = dark
 save_dir = /home/user/Pictures/Screenshots
 
 [notify]
+# Explicitly enable notifications (default is false)
 capture = true
 save = true
-copy = false
+copy = true
 
 [theme.my_custom_theme]
 Name: My Custom Theme

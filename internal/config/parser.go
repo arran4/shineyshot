@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/example/shineyshot/internal/theme"
+	"github.com/arran4/shineyshot/internal/theme"
 )
 
 // Parse reads configuration from an io.Reader.

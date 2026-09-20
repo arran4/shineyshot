@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/example/shineyshot/internal/appstate"
-	"github.com/example/shineyshot/internal/config"
-	"github.com/example/shineyshot/internal/notify"
-	"github.com/example/shineyshot/internal/theme"
+	"github.com/arran4/shineyshot/internal/appstate"
+	"github.com/arran4/shineyshot/internal/config"
+	"github.com/arran4/shineyshot/internal/notify"
+	"github.com/arran4/shineyshot/internal/theme"
 )
 
 var (

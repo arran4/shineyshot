@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/arran4/shineyshot/assets"
+	"github.com/arran4/shineyshot/internal/theme"
 	"github.com/arran4/spacemap"
 	"github.com/arran4/spacemap/simplearray"
-	"github.com/example/shineyshot/assets"
-	"github.com/example/shineyshot/internal/theme"
 	"golang.org/x/exp/shiny/screen"
 	"golang.org/x/mobile/event/key"
 )

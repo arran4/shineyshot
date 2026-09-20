@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/example/shineyshot/internal/skill"
+	"github.com/arran4/shineyshot/internal/skill"
 )
 
 type skillCmd struct {

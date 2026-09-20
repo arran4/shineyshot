@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/example/shineyshot/internal/theme"
+	"github.com/arran4/shineyshot/internal/theme"
 )
 
 // Notify holds notification settings.

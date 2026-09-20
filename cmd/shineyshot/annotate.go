@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/example/shineyshot/internal/appstate"
-	"github.com/example/shineyshot/internal/capture"
-	"github.com/example/shineyshot/internal/clipboard"
-	"github.com/example/shineyshot/internal/render"
+	"github.com/arran4/shineyshot/internal/appstate"
+	"github.com/arran4/shineyshot/internal/capture"
+	"github.com/arran4/shineyshot/internal/clipboard"
+	"github.com/arran4/shineyshot/internal/render"
 )
 
 // annotateCmd represents the annotate subcommand.

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/example/shineyshot/internal/platform"
+	"github.com/arran4/shineyshot/internal/platform"
 )
 
 // Event identifies a notification trigger.

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/example/shineyshot/internal/config"
+	"github.com/arran4/shineyshot/internal/config"
 )
 
 type configCmd struct {

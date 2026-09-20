@@ -228,6 +228,9 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+      - name: Validate desktop file
+        run: sudo apt-get install -y desktop-file-utils && desktop-file-validate assets/shineyshot.desktop
+
       - name: Test
         run: go test ./... -v
 

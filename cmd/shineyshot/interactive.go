@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example/shineyshot/internal/appstate"
-	"github.com/example/shineyshot/internal/capture"
-	"github.com/example/shineyshot/internal/clipboard"
+	"github.com/arran4/shineyshot/internal/appstate"
+	"github.com/arran4/shineyshot/internal/capture"
+	"github.com/arran4/shineyshot/internal/clipboard"
 )
 
 type interactiveCmd struct {

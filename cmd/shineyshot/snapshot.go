@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/example/shineyshot/internal/capture"
-	"github.com/example/shineyshot/internal/clipboard"
-	"github.com/example/shineyshot/internal/render"
+	"github.com/arran4/shineyshot/internal/capture"
+	"github.com/arran4/shineyshot/internal/clipboard"
+	"github.com/arran4/shineyshot/internal/render"
 )
 
 type snapshotCmd struct {

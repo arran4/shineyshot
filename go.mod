@@ -1,4 +1,4 @@
-module github.com/example/shineyshot
+module github.com/arran4/shineyshot
 
 go 1.25.0
 
