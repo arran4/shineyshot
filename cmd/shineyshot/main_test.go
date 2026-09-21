@@ -2,15 +2,13 @@ package main
 
 import (
 	"flag"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/arran4/shineyshot/internal/config"
 )
 
 func TestNotificationFlagsPrecedence(t *testing.T) {
-	// Create a temporary directory for config files
-	tmpDir := t.TempDir()
-
 	tests := []struct {
 		name          string
 		configContent string
@@ -75,23 +73,18 @@ copy = true`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var configPath string
+			var cfg *config.Config
 			if tt.configContent != "" {
-				configPath = filepath.Join(tmpDir, "config.rc")
-				err := os.WriteFile(configPath, []byte(tt.configContent), 0644)
+				var err error
+				cfg, err = config.Parse(strings.NewReader(tt.configContent))
 				if err != nil {
-					t.Fatalf("failed to write temp config: %v", err)
+					t.Fatalf("failed to parse config: %v", err)
 				}
 			} else {
-				// Point to a non-existent file to simulate no config
-				configPath = filepath.Join(tmpDir, "non_existent.rc")
+				cfg = config.New()
 			}
 
-			// Override the package-level variable to point to our test config
-			configPathOverride = configPath
-			defer func() { configPathOverride = "" }()
-
-			r := newRoot()
+			r := newRootWithConfig(cfg)
 			r.fs.Init("shineyshot", flag.ContinueOnError)
 
 			if err := r.fs.Parse(tt.args); err != nil {

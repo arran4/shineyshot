@@ -91,6 +91,10 @@ func (a *annotateCmd) Template() string {
 	return "annotate.txt"
 }
 
+func (e *editorCmd) Template() string {
+	return "editor.txt"
+}
+
 func (p *previewCmd) Template() string {
 	return "preview.txt"
 }

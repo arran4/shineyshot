@@ -4,7 +4,7 @@ Version=1.0
 Name=Shineyshot
 GenericName=Screenshot Tool
 Comment=Capture, annotate, and share screenshots on X11 and Wayland.
-Exec=shineyshot interactive
+Exec=shineyshot editor
 TryExec=shineyshot
 Icon=shineyshot
 Terminal=false
@@ -27,4 +27,4 @@ Exec=shineyshot annotate capture region
 
 [Desktop Action Annotate]
 Name=Open Editor
-Exec=shineyshot interactive
+Exec=shineyshot editor

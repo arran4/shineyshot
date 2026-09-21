@@ -60,14 +60,17 @@ func (r *root) FlagSet() *flag.FlagSet {
 }
 
 func newRoot() *root {
-	prefs := notify.LoadPreferences()
 	loader := config.NewLoader(version, configPathOverride)
 	cfg, err := loader.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to load config: %v\n", err)
 		cfg = config.New()
 	}
+	return newRootWithConfig(cfg)
+}
 
+func newRootWithConfig(cfg *config.Config) *root {
+	prefs := notify.LoadPreferences()
 	r := &root{
 		fs:       flag.NewFlagSet("shineyshot", flag.ExitOnError),
 		program:  "shineyshot",
@@ -166,6 +169,8 @@ func (r *root) Run(args []string) error {
 		cmd, err = parseWidthsCmd(subArgs, r)
 	case "test":
 		cmd, err = parseTestCmd(subArgs, r)
+	case "editor":
+		cmd, err = parseEditorCmd(subArgs, r)
 	case "config":
 		cmd, err = parseConfigCmd(subArgs, r)
 	case "skill":

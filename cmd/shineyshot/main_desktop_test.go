@@ -43,6 +43,8 @@ func TestDesktopExecCommands(t *testing.T) {
 				cmd, parseErr = parseAnnotateCmd(subArgs, r)
 			case "interactive":
 				cmd, parseErr = parseInteractiveCmd(subArgs, r)
+			case "editor":
+				cmd, parseErr = parseEditorCmd(subArgs, r)
 			default:
 				t.Errorf("Unexpected command in desktop file: %s", cmdName)
 				continue

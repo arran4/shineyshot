@@ -40,6 +40,7 @@ archives:
       # - goos: windows
       #   format: zip
     files:
+      - Makefile
       - assets/shineyshot.desktop
       - assets/icons/shineyshot.svg
       - README.md
