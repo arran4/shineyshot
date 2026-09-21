@@ -107,7 +107,7 @@ ShineyShot includes a standard Freedesktop entry (`assets/shineyshot.desktop`) w
 - **Capture Region:** Prompts you to select a screen region, then captures it and opens the editor (`shineyshot annotate capture region`).
 - **Open Editor:** A secondary action that acts exactly like the default entry, explicitly launching an empty interactive graphical editor (`shineyshot editor`).
 
-Because these actions route to `shineyshot editor` and `shineyshot annotate capture ...`, they do not silently overwrite files on disk. You must save or copy your capture manually from the editor window.
+Because these actions route to `shineyshot editor` and `shineyshot annotate capture ...`, they do not silently overwrite files on disk. Saving a capture without an explicit output file safely generates a new image in your `Pictures` directory.
 
 ## UI Mode
 

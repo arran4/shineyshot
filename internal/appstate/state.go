@@ -13,10 +13,8 @@ import (
 	"golang.org/x/image/math/fixed"
 	"image"
 	"image/draw"
-	"image/png"
 	"log"
 	"math"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +33,7 @@ import (
 type AppState struct {
 	Image                *image.RGBA
 	Output               string
+	SaveAction           SaveAction
 	ColorIdx             int
 	WidthIdx             int
 	Mode                 Mode
@@ -71,6 +70,9 @@ func WithImage(img *image.RGBA) Option { return func(a *AppState) { a.Image = im
 
 // WithOutput sets the output file path used when saving annotations.
 func WithOutput(out string) Option { return func(a *AppState) { a.Output = out } }
+
+// WithSaveAction sets the function used to save an image from the UI.
+func WithSaveAction(action SaveAction) Option { return func(a *AppState) { a.SaveAction = action } }
 
 // WithColorIndex sets the initial palette index for drawing tools.
 func WithColorIndex(idx int) Option { return func(a *AppState) { a.ColorIdx = idx } }
@@ -501,22 +503,16 @@ func (a *AppState) Main(s screen.Screen) {
 
 		registerSave := func() {
 			register("save", shortcutList{{Rune: 's', Modifiers: key.ModControl}}, func() {
-				out, err := os.Create(output)
+				saveFunc := a.SaveAction
+				if saveFunc == nil {
+					saveFunc = DefaultSaveAction(output)
+				}
+				savedPath, err := saveFunc(tabs[current].Image)
 				if err != nil {
 					errorToast("save failed: %v", err)
 					return
 				}
-				if err := png.Encode(out, tabs[current].Image); err != nil {
-					errorToast("save failed: %v", err)
-					if cerr := out.Close(); cerr != nil {
-						log.Printf("save: closing file: %v", cerr)
-					}
-					return
-				}
-				if err := out.Close(); err != nil {
-					errorToast("save failed closing file: %v", err)
-					return
-				}
+				output = savedPath
 				infoToast(fmt.Sprintf("saved %s", output))
 			})
 		}
