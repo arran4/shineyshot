@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/example/shineyshot/internal/appstate"
+	"github.com/arran4/shineyshot/internal/appstate"
 )
 
 type titleOptions struct {

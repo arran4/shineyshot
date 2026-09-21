@@ -1,0 +1,5 @@
+Usage: {{.Program}}
+Launch an empty interactive graphical editor.
+
+Common flags:
+{{flags .FlagSet}}

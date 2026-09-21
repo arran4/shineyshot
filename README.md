@@ -37,6 +37,12 @@ go install ./cmd/shineyshot
 
 The final command places the compiled binary in `$(go env GOBIN)` (or `$(go env GOPATH)/bin` when `GOBIN` is unset) so it is available on your `PATH`.
 
+Alternatively, if you've extracted a release archive or built the binary, you can use the provided `Makefile` to install the binary, desktop integration file, and icon to standard paths:
+
+```bash
+sudo make install PREFIX=/usr/local
+```
+
 ## Configuration
 
 ShineyShot supports a configuration file to persist your preferences. The configuration file follows a simple key-value format (RC style).
@@ -72,16 +78,17 @@ shineyshot config save -force
 
 ### File Format
 
-The configuration file supports global settings and sections for specific features like notifications and themes.
+The configuration file supports global settings and sections for specific features like notifications and themes. Desktop notifications are entirely disabled by default; you must explicitly opt in to enable them for capture, save, or copy events.
 
 ```ini
 theme = dark
 save_dir = /home/user/Pictures/Screenshots
 
 [notify]
+# Explicitly enable notifications (default is false)
 capture = true
 save = true
-copy = false
+copy = true
 
 [theme.my_custom_theme]
 Name: My Custom Theme
@@ -89,6 +96,18 @@ Background: #1E1E1E
 Foreground: #FFFFFF
 # ... other theme colors
 ```
+
+## Desktop Integration
+
+ShineyShot includes a standard Freedesktop entry (`assets/shineyshot.desktop`) which provides several quick-access actions from your application launcher or dock:
+
+- **Shineyshot (Default):** Launches an interactive, independent editor window without pre-capturing an image (`shineyshot editor`).
+- **Capture Full Screen:** Instantly captures your screen and opens the result in the annotation editor (`shineyshot annotate capture screen`).
+- **Capture Window:** Captures the active window and opens the result in the annotation editor (`shineyshot annotate capture window`).
+- **Capture Region:** Prompts you to select a screen region, then captures it and opens the editor (`shineyshot annotate capture region`).
+- **Open Editor:** A secondary action that acts exactly like the default entry, explicitly launching an empty interactive graphical editor (`shineyshot editor`).
+
+Because these actions route to `shineyshot editor` and `shineyshot annotate capture ...`, they do not silently overwrite files on disk. Saving a capture without an explicit output file safely generates a new image in your `Pictures` directory.
 
 ## UI Mode
 

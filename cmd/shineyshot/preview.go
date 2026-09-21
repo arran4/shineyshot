@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/example/shineyshot/internal/appstate"
-	"github.com/example/shineyshot/internal/clipboard"
+	"github.com/arran4/shineyshot/internal/appstate"
+	"github.com/arran4/shineyshot/internal/clipboard"
 )
 
 type previewCmd struct {

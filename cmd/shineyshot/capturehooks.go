@@ -1,6 +1,6 @@
 package main
 
-import "github.com/example/shineyshot/internal/capture"
+import "github.com/arran4/shineyshot/internal/capture"
 
 var (
 	captureScreenshotFn = capture.Screenshot
