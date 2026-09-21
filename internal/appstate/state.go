@@ -398,6 +398,7 @@ func (a *AppState) Main(s screen.Screen) {
 	tabs := []Tab{{
 		Image:         rgba,
 		Title:         "1",
+		Output:        output,
 		Offset:        a.InitialShadowOffset,
 		Zoom:          1,
 		NextNumber:    1,
@@ -505,15 +506,15 @@ func (a *AppState) Main(s screen.Screen) {
 			register("save", shortcutList{{Rune: 's', Modifiers: key.ModControl}}, func() {
 				saveFunc := a.SaveAction
 				if saveFunc == nil {
-					saveFunc = DefaultSaveAction(output)
+					saveFunc = DefaultSaveAction(tabs[current].Output)
 				}
 				savedPath, err := saveFunc(tabs[current].Image)
 				if err != nil {
 					errorToast("save failed: %v", err)
 					return
 				}
-				output = savedPath
-				infoToast(fmt.Sprintf("saved %s", output))
+				tabs[current].Output = savedPath
+				infoToast(fmt.Sprintf("saved %s", savedPath))
 			})
 		}
 

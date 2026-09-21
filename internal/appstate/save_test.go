@@ -77,7 +77,9 @@ func TestSaveToAutoPath_Collision(t *testing.T) {
 	}
 
 	// Write something to the file to verify it's not truncated
-	os.WriteFile(path1, []byte("original data"), 0644)
+	if err := os.WriteFile(path1, []byte("original data"), 0644); err != nil {
+		t.Fatalf("Failed to write to path1: %v", err)
+	}
 
 	// Second save should collide and create shineyshot-20260101-120000-01.png
 	path2, err := saveToAutoPath(img, tmpDir, defaultFS, mc)
@@ -90,7 +92,10 @@ func TestSaveToAutoPath_Collision(t *testing.T) {
 	}
 
 	// Verify original file was preserved
-	data, _ := os.ReadFile(path1)
+	data, err := os.ReadFile(path1)
+	if err != nil {
+		t.Fatalf("Failed to read path1: %v", err)
+	}
 	if string(data) != "original data" {
 		t.Errorf("Original file was truncated or modified")
 	}

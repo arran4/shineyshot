@@ -101,6 +101,8 @@ const (
 type Tab struct {
 	Image *image.RGBA
 	Title string
+	// Output stores the file path this tab was saved to or loaded from.
+	Output string
 	// Offset is stored in image coordinates so it is independent of zoom.
 	Offset        image.Point
 	Zoom          float64
