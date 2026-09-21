@@ -27,4 +27,4 @@ Exec=shineyshot annotate capture region
 
 [Desktop Action Annotate]
 Name=Open Editor
-Exec=shineyshot annotate
+Exec=shineyshot interactive

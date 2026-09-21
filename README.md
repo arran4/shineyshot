@@ -97,6 +97,18 @@ Foreground: #FFFFFF
 # ... other theme colors
 ```
 
+## Desktop Integration
+
+ShineyShot includes a standard Freedesktop entry (`assets/shineyshot.desktop`) which provides several quick-access actions from your application launcher or dock:
+
+- **Shineyshot (Default):** Launches an interactive, independent editor window without pre-capturing an image (`shineyshot interactive`).
+- **Capture Full Screen:** Instantly captures your screen and opens the result in the annotation editor (`shineyshot annotate capture screen`).
+- **Capture Window:** Prompts you to select a window, then captures it and opens the editor (`shineyshot annotate capture window`).
+- **Capture Region:** Prompts you to select a screen region, then captures it and opens the editor (`shineyshot annotate capture region`).
+- **Open Editor:** A secondary action that acts exactly like the default entry, explicitly launching an empty interactive session.
+
+Because these actions route to `shineyshot interactive` and `shineyshot annotate capture ...`, they do not silently overwrite files on disk. You must save or copy your capture manually from the editor window.
+
 ## UI Mode
 
 Launch the graphical editor from any environment and control how it starts up with command-line flags.

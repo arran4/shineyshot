@@ -2,64 +2,101 @@ package main
 
 import (
 	"flag"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestNotificationFlagsPrecedence(t *testing.T) {
+	// Create a temporary directory for config files
+	tmpDir := t.TempDir()
+
 	tests := []struct {
 		name          string
-		configCapture bool
-		configSave    bool
-		configCopy    bool
+		configContent string
 		args          []string
 		wantCapture   bool
 		wantSave      bool
 		wantCopy      bool
 	}{
 		{
-			name:          "defaults (all false)",
-			configCapture: false, configSave: false, configCopy: false,
+			name:          "no config file (defaults to false)",
+			configContent: "",
+			args:          []string{"version"},
+			wantCapture:   false,
+			wantSave:      false,
+			wantCopy:      false,
+		},
+		{
+			name: "config true",
+			configContent: `[notify]
+capture = true
+save = true
+copy = true`,
 			args:        []string{"version"},
-			wantCapture: false, wantSave: false, wantCopy: false,
+			wantCapture: true,
+			wantSave:    true,
+			wantCopy:    true,
 		},
 		{
-			name:          "config overrides defaults",
-			configCapture: true, configSave: true, configCopy: true,
-			args:        []string{"version"},
-			wantCapture: true, wantSave: true, wantCopy: true,
-		},
-		{
-			name:          "flags override config (enable)",
-			configCapture: false, configSave: false, configCopy: false,
-			args:        []string{"-notify-capture", "-notify-save=true", "-notify-copy", "version"},
-			wantCapture: true, wantSave: true, wantCopy: true,
-		},
-		{
-			name:          "flags override config (disable)",
-			configCapture: true, configSave: true, configCopy: true,
+			name: "config true but flag overrides to false",
+			configContent: `[notify]
+capture = true
+save = true
+copy = true`,
 			args:        []string{"-notify-capture=false", "-notify-save=false", "-notify-copy=false", "version"},
-			wantCapture: false, wantSave: false, wantCopy: false,
+			wantCapture: false,
+			wantSave:    false,
+			wantCopy:    false,
+		},
+		{
+			name: "config false but flag overrides to true",
+			configContent: `[notify]
+capture = false
+save = false
+copy = false`,
+			args:        []string{"-notify-capture=true", "-notify-save", "-notify-copy=true", "version"},
+			wantCapture: true,
+			wantSave:    true,
+			wantCopy:    true,
+		},
+		{
+			name: "mixed config",
+			configContent: `[notify]
+capture = true
+save = false
+copy = true`,
+			args:        []string{"version"},
+			wantCapture: true,
+			wantSave:    false,
+			wantCopy:    true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var configPath string
+			if tt.configContent != "" {
+				configPath = filepath.Join(tmpDir, "config.rc")
+				err := os.WriteFile(configPath, []byte(tt.configContent), 0644)
+				if err != nil {
+					t.Fatalf("failed to write temp config: %v", err)
+				}
+			} else {
+				// Point to a non-existent file to simulate no config
+				configPath = filepath.Join(tmpDir, "non_existent.rc")
+			}
+
+			// Override the package-level variable to point to our test config
+			configPathOverride = configPath
+			defer func() { configPathOverride = "" }()
+
 			r := newRoot()
-			r.config.Notify.Capture = tt.configCapture
-			r.config.Notify.Save = tt.configSave
-			r.config.Notify.Copy = tt.configCopy
+			r.fs.Init("shineyshot", flag.ContinueOnError)
 
-			// newRoot initializes the flags with the *current* config values.
-			// Since we just changed the config values manually *after* newRoot,
-			// we need to recreate the flags to simulate how newRoot does it normally.
-			// Rebuilding flagset to reflect updated config
-			r.fs = flag.NewFlagSet("shineyshot", flag.ContinueOnError)
-			r.fs.BoolVar(&r.captureAlerts, "notify-capture", r.config.Notify.Capture, "show a desktop notification after capturing a screenshot")
-			r.fs.BoolVar(&r.saveAlerts, "notify-save", r.config.Notify.Save, "show a desktop notification after saving an image")
-			r.fs.BoolVar(&r.copyAlerts, "notify-copy", r.config.Notify.Copy, "show a desktop notification after copying to the clipboard")
-
-			// Ignore errors in parse to just check flag values
-			_ = r.fs.Parse(tt.args)
+			if err := r.fs.Parse(tt.args); err != nil {
+				t.Fatalf("fs.Parse failed: %v", err)
+			}
 
 			if r.captureAlerts != tt.wantCapture {
 				t.Errorf("Capture: got %v, want %v", r.captureAlerts, tt.wantCapture)
